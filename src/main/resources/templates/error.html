@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <base th:href="@{/}">
+    <meta charset="UTF-8">
+    <title>错误</title>
+    <style>
+    html, body {
+        height: 100%;
+        width: 100%;
+        margin: 0;
+        padding: 0;
+    }
+    body {
+        background-color: #f5f5f5;
+        height: 100vh;
+        font-family: "Helvetica Neue", Helvetica, "PingFang SC", "Microsoft YaHei", "微软雅黑", Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji';
+    }
+    .error-panel {
+        position: absolute;
+        top: 38.2%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+    }
+    .error-code, .error-msg {
+        text-align: center;
+    }
+    .error-code {
+        font-size: 3em;
+    }
+    .error-msg {
+        font-size: 1.2em;
+        margin-bottom: 2em;
+    }
+    .back-home {
+        text-align: center;
+    }
+    </style>
+</head>
+
+<body>
+    <div class="error-panel">
+        <h1 class="error-code" th:text="${errorCode}">500</h1>
+        <p class="error-msg" th:text="${message}">发生了点问题</p>
+        <div class="back-home"><a th:href="@{/}">返回首页</a></div>
+    </div>
+</body>
+</html>
