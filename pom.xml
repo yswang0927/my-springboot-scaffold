@@ -38,23 +38,23 @@
 			<version>3.19.0</version>
 		</dependency>
 
-		<dependency>
+		<!--<dependency>
 			<groupId>commons-beanutils</groupId>
 			<artifactId>commons-beanutils</artifactId>
 			<version>1.11.0</version>
-		</dependency>
+		</dependency>-->
 
-		<dependency>
+		<!--<dependency>
 			<groupId>org.apache.commons</groupId>
 			<artifactId>commons-digester3</artifactId>
 			<version>3.2</version>
-		</dependency>
+		</dependency>-->
 
-		<dependency>
+		<!--<dependency>
 			<groupId>org.apache.commons</groupId>
 			<artifactId>commons-collections4</artifactId>
 			<version>4.5.0</version>
-		</dependency>
+		</dependency>-->
 
 		<dependency>
 			<groupId>com.google.guava</groupId>
@@ -91,6 +91,18 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-data-jpa</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>org.msgpack</groupId>
+			<artifactId>jackson-dataformat-msgpack</artifactId>
+			<version>0.9.11</version>
+			<exclusions>
+				<exclusion>
+					<groupId>com.fasterxml.jackson.core</groupId>
+					<artifactId>jackson-databind</artifactId>
+				</exclusion>
+			</exclusions>
 		</dependency>
 
 		<dependency>
@@ -208,6 +220,31 @@
 										<include name="favicon.png" />
 									</fileset>
 								</copy>
+								<copy todir="${project.build.outputDirectory}/templates" overwrite="true" encoding="UTF-8">
+									<fileset dir="${basedir}/src/frontend/dist">
+										<include name="index.html" />
+									</fileset>
+								</copy>
+								<replace file="${project.build.outputDirectory}/templates/index.html"
+										 propertyFile="${basedir}/src/main/resources/application.properties">
+									<replacefilter>
+										<replacetoken><![CDATA[<html>]]></replacetoken>
+										<replacevalue><![CDATA[<html xmlns:th="http://www.thymeleaf.org">]]></replacevalue>
+									</replacefilter>
+									<!--<replacefilter token="" property="server.servlet.context-path" />-->
+									<replacefilter>
+										<replacetoken><![CDATA[<base href="/">]]></replacetoken>
+										<replacevalue><![CDATA[<base th:href="@{/}">]]></replacevalue>
+									</replacefilter>
+									<replacefilter>
+										<replacetoken><![CDATA[ src="/]]></replacetoken>
+										<replacevalue><![CDATA[ src="static/]]></replacevalue>
+									</replacefilter>
+									<replacefilter>
+										<replacetoken><![CDATA[ href="/]]></replacetoken>
+										<replacevalue><![CDATA[ href="static/]]></replacevalue>
+									</replacefilter>
+								</replace>
 							</target>
 						</configuration>
 					</execution>

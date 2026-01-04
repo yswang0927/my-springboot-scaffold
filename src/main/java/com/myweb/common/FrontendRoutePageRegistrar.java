@@ -15,7 +15,7 @@ public class FrontendRoutePageRegistrar implements ErrorPageRegistrar {
     public void registerErrorPages(ErrorPageRegistry registry) {
         // 当Spring找不到对应的Controller处理请求时（返回404）
         // 自动重定向到 /index.html, 前端框架接管路由处理
-        ErrorPage frontendIndexPage = new ErrorPage(HttpStatus.NOT_FOUND, "/index.html");
+        ErrorPage frontendIndexPage = new ErrorPage(HttpStatus.NOT_FOUND, "/index");
         registry.addErrorPages(frontendIndexPage);
     }
 }

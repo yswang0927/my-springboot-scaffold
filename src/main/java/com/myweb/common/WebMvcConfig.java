@@ -1,7 +1,18 @@
 package com.myweb.common;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.msgpack.jackson.dataformat.MessagePackMapper;
+import org.springframework.context.MessageSource;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.MediaType;
+import org.springframework.http.converter.HttpMessageConverter;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 import org.springframework.web.servlet.config.annotation.*;
+
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.util.List;
 
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
@@ -36,6 +47,22 @@ public class WebMvcConfig implements WebMvcConfigurer {
         // 这样当静态资源请求 /static/** 和 RequestMapping(/**) 冲突时，优先使用静态资源处理
         registry.addResourceHandler("/static/**", "/assets/**")
                 .addResourceLocations("classpath:/static/", "classpath:/assets/");
+    }
+
+    @Override
+    public void configureMessageConverters(List<HttpMessageConverter<?>> converters) {
+        // 增加支持 msgpack 协议
+        ObjectMapper msgpackMapper = new MessagePackMapper();
+        msgpackMapper.configOverride(BigInteger.class).setFormat(JsonFormat.Value.forShape(JsonFormat.Shape.STRING));
+        msgpackMapper.configOverride(BigDecimal.class).setFormat(JsonFormat.Value.forShape(JsonFormat.Shape.STRING));
+
+        MappingJackson2HttpMessageConverter msgpackConverter = new MappingJackson2HttpMessageConverter(msgpackMapper);
+        msgpackConverter.setSupportedMediaTypes(List.of(
+                new MediaType("application", "x-msgpack"),
+                new MediaType("application", "msgpack")
+        ));
+
+        converters.add(0, msgpackConverter);
     }
 
     /*@Bean

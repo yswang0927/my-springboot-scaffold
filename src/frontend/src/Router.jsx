@@ -1,0 +1,17 @@
+import { Routes, Route } from "react-router-dom";
+import DefaultLayout from "./layouts/DefaultLayout";
+import Home from "./pages/home";
+import Settings from "./pages/setting";
+import MsgpackPage  from "./pages/msgpack";
+
+export default function Router() {
+    return (
+        <Routes>
+            <Route element={<DefaultLayout />}>
+                <Route path="/" element={<Home />} />
+                <Route path="/settings" element={<Settings />} />
+                <Route path="/msgpack" element={<MsgpackPage />} />
+            </Route>
+        </Routes>
+    );
+}

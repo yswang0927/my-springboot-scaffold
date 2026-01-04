@@ -25,7 +25,7 @@ import java.util.Map;
 /**
  * 全局异常处理
  */
-@ControllerAdvice
+//@ControllerAdvice
 public class GlobalExceptionHandler {
 
     // 国际化
