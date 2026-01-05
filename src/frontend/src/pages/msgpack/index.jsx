@@ -9,9 +9,14 @@ export default function MsgpackPage() {
     const [msgpackData, setMsgpackData] = useState([]);
 
     useEffect(() => {
-        /*request.post("/msgpack-data", {
-            name: "msgpack",
-            date: new Date()
+        request.post("/msgpack-data", {
+            name: "json",
+            index: 2026,
+            flag: false,
+            date: new Date(),
+            localDateTime: new Date().toISOString(),
+            localDate: new Date().toLocaleDateString(),
+            instant: new Date().toUTCString()
         }, {
             headers: {
                 'Content-Type': 'application/x-msgpack',
@@ -20,9 +25,9 @@ export default function MsgpackPage() {
         }).then(res => {
             console.log(res.data);
             setMsgpackData(res.data.data);
-        });*/
+        });
 
-        request.post("/json-data", {
+        /*request.post("/json-data", {
             name: "json",
             index: 2026,
             flag: false,
@@ -32,14 +37,17 @@ export default function MsgpackPage() {
             instant: new Date().toISOString()
         }).then(res => {
             console.log(res.data);
-        });
+        });*/
 
+        return () => {
+            console.log('>> 卸载页面：MsgpackPage');
+        };
     }, []);
 
     return (
         <div>
             <h1>Msgpack测试</h1>
-            <ul>{msgpackData.map((item, i) => <li key={item + i}>{item}</li>)}</ul>
+            <pre>{JSON.stringify(msgpackData, null, 2)}</pre>
         </div>
     );
 }

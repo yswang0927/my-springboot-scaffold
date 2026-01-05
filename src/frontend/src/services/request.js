@@ -1,10 +1,10 @@
 import axios from "axios";
 import { unpack, pack, addExtension } from 'msgpackr';
 
+// 为 Date 类型添加 msgpack 扩展支持：自动序列化为 ISO 字符串
 addExtension({
   Class: Date,
-  type: 98,
-  write: (date) => date.toLocaleString(),
+  write: (date) => date.toISOString(),
   read: (dateStr) => new Date(dateStr)
 });
 

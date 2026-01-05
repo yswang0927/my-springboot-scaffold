@@ -13,8 +13,8 @@ import java.util.Map;
 public class TestController {
 
     @PostMapping(value = "/api/msgpack-data", produces = "application/x-msgpack")
-    public List<Object> testMsgPackData(@RequestBody Map<String, Object> payload) {
-        return List.of("hello", "world", new Date(), LocalDateTime.now(), "收到的请求数据："+ payload.toString());
+    public List<Object> testMsgPackData(@RequestBody(required = false) TestBean payload) {
+        return List.of("hello", "world", new Date(), LocalDateTime.now(), payload);
     }
 
     @RequestMapping(value = "/api/json-data")
