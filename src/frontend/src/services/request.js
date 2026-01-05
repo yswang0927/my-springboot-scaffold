@@ -53,7 +53,8 @@ request.interceptors.response.use(
                 response.data = new TextDecoder().decode(response.data);
             }*/
         }
-        return response;
+        // 直接返回解析后的数据
+        return response.data;
     },
     (error) => {
         // 错误响应也可按同样逻辑处理（可选）

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useRequest } from "ahooks";
 
 import usePageTitle from "@/hooks/usePageTitle.js";
 import request from "@/services/request";
@@ -7,6 +8,19 @@ export default function MsgpackPage() {
     usePageTitle("MsgPack测试");
 
     const [msgpackData, setMsgpackData] = useState([]);
+
+    const { data, error, loading } = useRequest(() => request.post("/json-data", {
+        name: "json",
+        index: 2026,
+        flag: false,
+        date: new Date().toLocaleDateString(),
+        localDateTime: new Date().toISOString(),
+        localDate: new Date().toISOString(),
+        instant: new Date().toISOString()
+    }));
+    if (!loading) {
+        console.log("useRequest data:", data);
+    }
 
     useEffect(() => {
         request.post("/msgpack-data", {
@@ -22,11 +36,12 @@ export default function MsgpackPage() {
                 'Content-Type': 'application/x-msgpack',
             },
             responseType: 'arraybuffer'
-        }).then(res => {
-            console.log(res.data);
-            setMsgpackData(res.data.data);
+        }).then(resData => {
+            console.log(resData);
+            setMsgpackData(resData.data);
         });
 
+        
         /*request.post("/json-data", {
             name: "json",
             index: 2026,
@@ -35,8 +50,8 @@ export default function MsgpackPage() {
             localDateTime: new Date().toISOString(),
             localDate: new Date().toISOString(),
             instant: new Date().toISOString()
-        }).then(res => {
-            console.log(res.data);
+        }).then(resData => {
+            console.log(resData);
         });*/
 
         return () => {
