@@ -200,7 +200,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
         public InstantDeserializer2(String timeZone) {
             this.timeZone = timeZone;
-            // zoneOffset格式：+08:00
+            // ZoneOffset格式：+08:00
             ZoneId zoneId = ZoneId.of(this.timeZone);
             this.zoneOffset = zoneId.getRules().getOffset(Instant.now());
         }
