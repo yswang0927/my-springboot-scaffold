@@ -59,6 +59,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
     @Override
     public void addViewControllers(ViewControllerRegistry registry) {
         // 如果前端页面是 SPA 单页路由应用方式，则可以针对性的配置前端url地址映射
+        // 也可以使用 FrontendRoutePageRegistrar 实现
         // 示例：
         /*String[] frontendRoutes = {"/user/**", "..."};
         for ( String route : frontendRoutes) {
