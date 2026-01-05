@@ -30,7 +30,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.TimeZone;
 
-import com.myweb.util.dateparser.DateParserUtils;
+import com.github.sisyphsu.dateparser.DateParserUtils;
 import org.msgpack.jackson.dataformat.MessagePackMapper;
 
 @Configuration
