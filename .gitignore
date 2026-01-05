@@ -14,6 +14,7 @@ pnpm-debug.log*
 node_modules
 dist
 target
+logs/
 src/frontend/node_modules
 src/frontend/dist
 src/frontend/node
