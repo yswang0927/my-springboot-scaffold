@@ -12,4 +12,9 @@ public class CommonController {
         return new ModelAndView("index");
     }
 
+    @GetMapping("/common/browser-unsupported")
+    public ModelAndView browserUnsupported() {
+        return new ModelAndView("browser-unsupported");
+    }
+
 }

@@ -106,6 +106,14 @@
 			</exclusions>
 		</dependency>
 
+		<!-- 图形验证码，支持gif、中文、算术等类型(https://github.com/eternalstone/EasyCaptchaBoot) -->
+		<dependency>
+			<groupId>io.github.eternalstone</groupId>
+			<artifactId>captcha-spring-boot-starter</artifactId>
+			<version>3.0.0</version> <!-- springboot3.x -->
+			<!-- <version>2.0.0</version> springboot2.x-->
+		</dependency>
+
 		<dependency>
 			<groupId>cn.hutool</groupId>
 			<artifactId>hutool-all</artifactId>
