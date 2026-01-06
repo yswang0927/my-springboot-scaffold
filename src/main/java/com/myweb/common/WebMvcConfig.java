@@ -71,8 +71,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
         // setOrder(-1) 设置静态资源优先级高于 RequestMapping 的优先级
         // 这样当静态资源请求 /static/** 和 RequestMapping(/**) 冲突时，优先使用静态资源处理
-        registry.addResourceHandler("/static/**", "/assets/**")
-                .addResourceLocations("classpath:/static/", "classpath:/assets/");
+        /*registry.addResourceHandler("/static/**", "/assets/**")
+                .addResourceLocations("classpath:/static/", "classpath:/assets/");*/
     }
 
     @Override

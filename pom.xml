@@ -241,7 +241,7 @@
 								<copy todir="${project.build.outputDirectory}/static" overwrite="true" encoding="UTF-8">
 									<fileset dir="${basedir}/src/frontend/dist">
 										<include name="assets/**"/>
-										<include name="index.html" />
+										<!--<include name="index.html" />-->
 										<include name="favicon.ico" />
 										<include name="favicon.svg" />
 										<include name="favicon.png" />
@@ -259,8 +259,8 @@
 										<replacevalue><![CDATA[<html xmlns:th="http://www.thymeleaf.org">]]></replacevalue>
 									</replacefilter>
 									<replacefilter>
-										<replacetoken><![CDATA[<base href="/">]]></replacetoken>
-										<replacevalue><![CDATA[<base th:href="@{/}">]]></replacevalue>
+										<replacetoken><![CDATA[<head>]]></replacetoken>
+										<replacevalue><![CDATA[<head><base th:href="@{/}">]]></replacevalue>
 									</replacefilter>
 									<replacefilter>
 										<replacetoken><![CDATA[</head>]]></replacetoken>
@@ -268,11 +268,11 @@
 									</replacefilter>
 									<replacefilter>
 										<replacetoken><![CDATA[ src="/]]></replacetoken>
-										<replacevalue><![CDATA[ src="static/]]></replacevalue>
+										<replacevalue><![CDATA[ src="]]></replacevalue>
 									</replacefilter>
 									<replacefilter>
 										<replacetoken><![CDATA[ href="/]]></replacetoken>
-										<replacevalue><![CDATA[ href="static/]]></replacevalue>
+										<replacevalue><![CDATA[ href="]]></replacevalue>
 									</replacefilter>
 								</replace>
 							</target>
