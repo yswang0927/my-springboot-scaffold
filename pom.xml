@@ -258,10 +258,13 @@
 										<replacetoken><![CDATA[<html>]]></replacetoken>
 										<replacevalue><![CDATA[<html xmlns:th="http://www.thymeleaf.org">]]></replacevalue>
 									</replacefilter>
-									<!--<replacefilter token="" property="server.servlet.context-path" />-->
 									<replacefilter>
 										<replacetoken><![CDATA[<base href="/">]]></replacetoken>
 										<replacevalue><![CDATA[<base th:href="@{/}">]]></replacevalue>
+									</replacefilter>
+									<replacefilter>
+										<replacetoken><![CDATA[</head>]]></replacetoken>
+										<replacevalue><![CDATA[<script th:inline="javascript">window.APP_BASE_URL="[(@{/})]";</script></head>]]></replacevalue>
 									</replacefilter>
 									<replacefilter>
 										<replacetoken><![CDATA[ src="/]]></replacetoken>

@@ -13,8 +13,13 @@ function isMsgpackResponse(headers) {
     return contentType?.includes('application/x-msgpack') || contentType?.includes('application/msgpack');
 }
 
+let base_url = window.APP_BASE_URL ? window.APP_BASE_URL : `${window.location.protocol}//${window.location.hostname}:9090`;
+if (base_url.endsWith('/')) {
+    base_url = base_url.slice(0, -1);
+}
+
 const request = axios.create({
-    baseURL: `${window.location.protocol}//${window.location.hostname}:9090/api`,
+    baseURL: `${base_url}/api`,
     timeout: 10000,
 });
 
