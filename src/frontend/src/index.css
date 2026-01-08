@@ -1,42 +1,54 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  --base-font-size: 16px;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
+@media screen and (min-width: 2500px) and (-webkit-min-device-pixel-ratio: 1.5) {
+  :root {
+    --base-font-size: 20px;
+  }
 }
-a:hover {
-  color: #535bf2;
+@media screen and (min-width: 3800px) and (min-resolution: 150dpi) {
+  :root {
+    --base-font-size: 28px;
+  }
+}
+@media screen and (min-width: 5000px) and (min-resolution: 190dpi) {
+  :root {
+    --base-font-size: 36px;
+  }
+}
+
+/* 针对高 DPI 屏幕优化清晰度 */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-weight: 400; /* 高分屏下字体显得细，可稍微加粗 */
+  }
+}
+
+html {
+  font-size: var(--base-font-size);
+  transition: font-size 0.3s ease; /* 窗口缩放时平滑过渡 */
+}
+
+/*
+  特殊处理：带鱼屏修正, 如果宽高比超过 21:9，说明是超宽屏，
+  即便宽度很大，我们也强制将字号回调，防止文字过大导致纵向滚动太多
+*/
+@media screen and (min-aspect-ratio: 21/10) {
+  html {
+    font-size: 18px !important; /* 限制带鱼屏下的最大字号 */
+  }
 }
 
 body {
-  margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
+  font-size: 0.875rem;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
-}
