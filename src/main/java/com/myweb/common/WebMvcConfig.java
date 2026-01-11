@@ -6,6 +6,7 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
+import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateSerializer;
 import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateTimeSerializer;
@@ -80,14 +81,24 @@ public class WebMvcConfig implements WebMvcConfigurer {
         // 增加支持 msgpack 协议
         ObjectMapper msgpackMapper = new MessagePackMapper();
         initCustomizeObjectMapper(msgpackMapper);
-
         MappingJackson2HttpMessageConverter msgpackConverter = new MappingJackson2HttpMessageConverter(msgpackMapper);
         msgpackConverter.setSupportedMediaTypes(List.of(
                 new MediaType("application", "x-msgpack"),
                 new MediaType("application", "msgpack")
         ));
 
+        // 支持 YAML request-payload 格式
+        // @PostMapping(value="...", consumes = "application/x-yaml")
+        YAMLMapper yamlMapper = new YAMLMapper();
+        initCustomizeObjectMapper(yamlMapper);
+        MappingJackson2HttpMessageConverter yamlConverter = new MappingJackson2HttpMessageConverter(yamlMapper);
+        yamlConverter.setSupportedMediaTypes(List.of(
+                new MediaType("application", "x-yaml"),
+                new MediaType("text", "yaml")
+        ));
+
         converters.add(0, msgpackConverter);
+        converters.add(1, yamlConverter);
     }
 
     /*@Bean
