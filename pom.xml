@@ -115,9 +115,8 @@
 		</dependency>
 
 		<dependency>
-			<groupId>cn.hutool</groupId>
-			<artifactId>hutool-all</artifactId>
-			<version>5.8.39</version>
+			<groupId>com.fasterxml.jackson.dataformat</groupId>
+			<artifactId>jackson-dataformat-yaml</artifactId>
 		</dependency>
 
 		<dependency>
@@ -139,6 +138,12 @@
 		</dependency>
 
 		<dependency>
+			<groupId>cn.hutool</groupId>
+			<artifactId>hutool-all</artifactId>
+			<version>5.8.39</version>
+		</dependency>
+
+		<dependency>
 			<groupId>com.h2database</groupId>
 			<artifactId>h2</artifactId>
 			<scope>runtime</scope>
@@ -148,6 +153,12 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-test</artifactId>
 			<scope>test</scope>
+		</dependency>
+
+		<dependency>
+			<groupId>com.github.javaparser</groupId>
+			<artifactId>javaparser-symbol-solver-core</artifactId>
+			<version>3.28.0</version>
 		</dependency>
 
 	</dependencies>

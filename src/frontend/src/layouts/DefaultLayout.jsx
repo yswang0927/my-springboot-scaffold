@@ -9,6 +9,7 @@ export default function DefaultLayout() {
                     <li><Link to="/">首页</Link></li>
                     <li><Link to="/settings">设置</Link></li>
                     <li><Link to="/msgpack">Msgpack测试</Link></li>
+                    <li><Link to="/fileupload">文件上传</Link></li>
                 </ul>
             </div>
             <div style={{flex: 1}}><Outlet /></div>

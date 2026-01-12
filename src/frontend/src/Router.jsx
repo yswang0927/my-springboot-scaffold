@@ -4,6 +4,7 @@ import Home from "./pages/home";
 import Login from "./pages/login";
 import Settings from "./pages/setting";
 import MsgpackPage  from "./pages/msgpack";
+import FileUploadPage from "./pages/fileupload";
 
 export default function Router() {
     return (
@@ -13,6 +14,7 @@ export default function Router() {
                 <Route path="/login" element={<Login />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/msgpack" element={<MsgpackPage />} />
+                <Route path="/fileupload" element={<FileUploadPage />} />
             </Route>
         </Routes>
     );

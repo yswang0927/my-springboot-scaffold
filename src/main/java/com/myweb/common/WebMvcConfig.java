@@ -1,5 +1,7 @@
 package com.myweb.common;
 
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.PropertyAccessor;
 import com.fasterxml.jackson.core.JacksonException;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonParser;
@@ -48,16 +50,6 @@ public class WebMvcConfig implements WebMvcConfigurer {
     }
 
     @Override
-    public void addCorsMappings(CorsRegistry registry) {
-         registry.addMapping("/api/**")
-                 .allowedOriginPatterns("*")
-                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD")
-                 .allowedHeaders("*")
-                 .allowCredentials(true)
-                 .maxAge(3600);
-    }
-
-    @Override
     public void addViewControllers(ViewControllerRegistry registry) {
         // 如果前端页面是 SPA 单页路由应用方式，则可以针对性的配置前端url地址映射
         // 也可以使用 FrontendRoutePageRegistrar 实现
@@ -89,16 +81,16 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
         // 支持 YAML request-payload 格式
         // @PostMapping(value="...", consumes = "application/x-yaml")
-        YAMLMapper yamlMapper = new YAMLMapper();
+        /*YAMLMapper yamlMapper = new YAMLMapper();
         initCustomizeObjectMapper(yamlMapper);
         MappingJackson2HttpMessageConverter yamlConverter = new MappingJackson2HttpMessageConverter(yamlMapper);
         yamlConverter.setSupportedMediaTypes(List.of(
                 new MediaType("application", "x-yaml"),
                 new MediaType("text", "yaml")
-        ));
+        ));*/
 
-        converters.add(0, msgpackConverter);
-        converters.add(1, yamlConverter);
+        converters.add(msgpackConverter);
+        //converters.add(yamlConverter);
     }
 
     /*@Bean
@@ -135,6 +127,13 @@ public class WebMvcConfig implements WebMvcConfigurer {
         objectMapper.setTimeZone(TimeZone.getTimeZone(ZoneId.of(this.timeZone)));
         objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         objectMapper.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+        // jackson在进行序列化时，会默认使用getter方法获取字段进行序列化，这是不想要的，只要序列化Field
+        objectMapper.setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.NONE);
+        objectMapper.setVisibility(PropertyAccessor.GETTER, JsonAutoDetect.Visibility.NONE);
+        objectMapper.setVisibility(PropertyAccessor.IS_GETTER, JsonAutoDetect.Visibility.NONE);
+        objectMapper.setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY);
+        objectMapper.setVisibility(PropertyAccessor.CREATOR, JsonAutoDetect.Visibility.ANY);
+        objectMapper.setVisibility(PropertyAccessor.SETTER, JsonAutoDetect.Visibility.ANY);
 
         // 统一的自定义模块
         SimpleModule simpleModule = new SimpleModule();
