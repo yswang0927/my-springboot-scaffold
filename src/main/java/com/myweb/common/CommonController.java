@@ -1,5 +1,6 @@
 package com.myweb.common;
 
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.servlet.ModelAndView;
@@ -7,9 +8,16 @@ import org.springframework.web.servlet.ModelAndView;
 @Controller
 public class CommonController {
 
-    @GetMapping(value = {"", "/", "/index"})
-    public ModelAndView index() {
-        return new ModelAndView("index");
+    /**
+     * 用于前端路由SPA页面访问适配。
+     * 使用否定前瞻来排除 API 和静态资源的路径。
+     */
+    @GetMapping(path={ "/", "/index", "/{firstPath:^(?!api|static|assets).+}/**" })
+    public ModelAndView index(HttpServletRequest request) {
+        ModelAndView mv = new ModelAndView("index");
+        // 向页面中添加变量
+        mv.addObject("contextPath", request.getContextPath());
+        return mv;
     }
 
     @GetMapping("/common/browser-unsupported")

@@ -8,8 +8,9 @@ import org.springframework.stereotype.Component;
 
 /**
  * 如果前端页面是 SPA 单页路由应用方式，则需要配置 404 页面跳转至 index.html
+ * @deprecated 使用 `CommonController` 中的 `/{firstPath:^(?!api|static|assets).+}/**` 替代。
  */
-@Component
+//@Component
 public class FrontendRoutePageRegistrar implements ErrorPageRegistrar {
     @Override
     public void registerErrorPages(ErrorPageRegistry registry) {

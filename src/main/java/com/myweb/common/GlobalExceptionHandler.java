@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.MessageSource;
 import org.springframework.http.HttpStatus;
+import org.springframework.util.unit.DataSize;
 import org.springframework.validation.BindException;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.ModelAndView;
 
 import java.util.Collections;
@@ -25,7 +27,7 @@ import java.util.Map;
 /**
  * 全局异常处理
  */
-//@ControllerAdvice
+@ControllerAdvice
 public class GlobalExceptionHandler {
 
     // 国际化
@@ -69,6 +71,14 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiResult handleBadRequestException(BadRequestException e) {
         return ApiResult.failed(HttpStatus.BAD_REQUEST.value(), e.getMessage());
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    @ResponseBody
+    @ResponseStatus(HttpStatus.PAYLOAD_TOO_LARGE)
+    public ApiResult<String> handleSizeError(MaxUploadSizeExceededException e) {
+        return ApiResult.failed(HttpStatus.PAYLOAD_TOO_LARGE.value(),
+                String.format("文件太大或请求体超出限制(%d MB)", DataSize.ofBytes(e.getMaxUploadSize()).toMegabytes()));
     }
 
     @ExceptionHandler(Exception.class)

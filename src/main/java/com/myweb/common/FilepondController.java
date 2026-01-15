@@ -24,8 +24,8 @@ public class FilepondController {
     public void uploading(@RequestPart("file") MultipartFile file,
                        @RequestHeader(value = "Upload-Name") String fileName, // 正在传输的文件的名称
                        @RequestHeader(value = "Upload-Length") long fileSize, // 正在传输的文件总大小
-                       @RequestHeader(value = "Upload-Offset") long offset, // 正在传输的数据块的偏移量
-                       @RequestHeader(value = "Upload-Id") String identifier) {
+                       @RequestHeader(value = "Upload-Offset") long uploadOffset, // 正在传输的数据块的偏移量
+                       @RequestHeader(value = "Upload-Id") String fileId) {
         System.out.println("正在上传的文件：" + fileName);
     }
 

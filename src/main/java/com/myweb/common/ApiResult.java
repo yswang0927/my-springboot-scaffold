@@ -7,11 +7,13 @@ public class ApiResult<T> implements Serializable {
     private String message = "success";
     private T data;
     private Object errors;
+    private long ts;
 
     ApiResult(int code, String message, T data) {
         this.code = code;
         this.message = message;
         this.data = data;
+        this.ts = System.currentTimeMillis();
     }
 
     public static ApiResult success() {
@@ -52,4 +54,7 @@ public class ApiResult<T> implements Serializable {
         return errors;
     }
 
+    public long getTs() {
+        return ts;
+    }
 }

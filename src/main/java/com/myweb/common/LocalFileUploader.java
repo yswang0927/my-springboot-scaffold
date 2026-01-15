@@ -2,6 +2,8 @@ package com.myweb.common;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.myweb.exception.FileUploadException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
@@ -23,6 +25,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * 文件上传服务
  */
 public class LocalFileUploader {
+    private static final Logger LOG = LoggerFactory.getLogger(LocalFileUploader.class);
 
     private static final ConcurrentHashMap<String, UploadStatus> FILES_UPLOADING_STATUS = new ConcurrentHashMap<>();
 
@@ -152,7 +155,7 @@ public class LocalFileUploader {
             }
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("文件 '{}' 上传失败: ", fileName, e);
             throw new FileUploadException(String.format("文件 '%s' 上传失败，原因: %s", fileName, e.getMessage()));
         }
 
