@@ -3,8 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <title>Welcome MyWeb</title>
+    <script th:inline="javascript">
+        window.APP_CTX_PATH = "[(${contextPath})]";
+    </script>
+    <script>
+        function veryCode() {
+            var veryCode = document.getElementById("veryCode").value;
+            fetch(window.APP_CTX_PATH + "/api/verify-captcha?captcha=" + veryCode).then(function (res) {
+                res.json().then(function(json) {
+                    var text = json.data ? "验证成功" : "验证失败";
+                    document.getElementById("veryOut").innerHTML = text;
+                });
+            });
+        }
+    </script>
 </head>
 <body>
-    <img th:src="@{/common/captcha}" >
+    <div>
+        <img th:src="@{/common/captcha}" >
+        <input type="text" id="veryCode">
+        <button type="button" onclick="veryCode()">验证</button>
+        <span id="veryOut"></span>
+    </div>
 </body>
 </html>

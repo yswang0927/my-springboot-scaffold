@@ -1,6 +1,9 @@
 package com.myweb;
 
 import com.myweb.common.LocalFileUploader;
+import io.github.eternalstone.captcha.listener.EasyCaptchaListener;
+import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
@@ -25,6 +28,10 @@ public class TestController {
     @Value("${spring.servlet.multipart.location}")
     private String uploadDir = System.getProperty("user.dir");
 
+    //注入一个EasyCaptchaListener用于校验验证码
+    @Resource
+    private EasyCaptchaListener easyCaptchaListener;
+
     @PostMapping(value = "/api/msgpack-data", produces = "application/x-msgpack")
     public List<Object> testMsgPackData(@RequestBody(required = false) TestBean payload) {
         return List.of("hello", "world", new Date(), LocalDateTime.now(), payload);
@@ -39,6 +46,12 @@ public class TestController {
     @PostMapping(value = "/api/fileupload")
     public LocalFileUploader.UploadStatus fileUpload(@RequestPart("file") MultipartFile file, HttpServletResponse response) {
         return LocalFileUploader.upload(new File(uploadDir, file.getOriginalFilename()), file, file.getSize(), 1, 10 * 1024 * 1024, 1);
+    }
+
+    @RequestMapping("/api/verify-captcha")
+    public boolean verifyCaptcha(HttpServletRequest request, @RequestParam("captcha") String captcha) {
+        System.out.println(">>> 收到提交的验证码："+ captcha);
+        return easyCaptchaListener.verify(request, captcha);
     }
 
     /**
