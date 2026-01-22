@@ -4,7 +4,7 @@ import com.myweb.workflow.graph.GNode;
 import com.myweb.workflow.nodes.OutputNode;
 import com.myweb.workflow.nodes.StartNode;
 
-public class NodeFactory {
+public class TaskNodeFactory {
     public static TaskNode createNode(GNode gNode) {
         if ("start".equals(gNode.getType())) {
             return new StartNode(gNode);

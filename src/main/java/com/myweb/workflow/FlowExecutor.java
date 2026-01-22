@@ -1,19 +1,19 @@
 package com.myweb.workflow;
 
-import com.myweb.workflow.exception.FlowExecuteException;
-import com.myweb.workflow.graph.GNode;
-import com.myweb.workflow.graph.GNodeInput;
-import com.myweb.workflow.graph.Graph;
-import com.myweb.workflow.nodes.StartNode;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.myweb.workflow.exception.FlowExecuteException;
+import com.myweb.workflow.graph.GNode;
+import com.myweb.workflow.graph.GNodeInput;
+import com.myweb.workflow.graph.Graph;
+import com.myweb.workflow.nodes.StartNode;
 
 /**
  * DAG流程执行器
@@ -115,7 +115,7 @@ public class FlowExecutor implements AutoCloseable {
     private void initialize() {
         List<GNode> nodes = this.dagGraph.getNodes();
         for (GNode node : nodes) {
-            this.runNodes.put(node.getId(), NodeFactory.createNode(node));
+            this.runNodes.put(node.getId(), TaskNodeFactory.createNode(node));
             // 预设
             this.retryCounts.put(node.getId(), new AtomicInteger(0));
         }
@@ -230,7 +230,21 @@ public class FlowExecutor implements AutoCloseable {
                             if (nodesToActivate.contains(dependentId)) {
                                 // 路径被激活：正常处理入度，如果为0则加入就绪队列
                                 if (this.currentInDegree.get(dependentId).decrementAndGet() == 0) {
-                                    this.readyQueue.offer(dependentId);
+                                    if (this.skippedNodes.contains(dependentId)) {
+                                        // 虽然被激活了，但因为之前有其他父节点跳过它，导致它已被标记。
+                                        // 现在所有父节点都齐了(入度0)，它正式成为"完成的跳过节点"。
+                                        this.completedTasksNum.incrementAndGet();
+                                        // 触发下游跳过
+                                        Collection<String> childDependents = this.dagGraph.getDownstreamNodes(dependentId);
+                                        if (childDependents != null && !childDependents.isEmpty()) {
+                                            for(String child : childDependents) {
+                                                propagateSkipNode(context, child);
+                                            }
+                                        }
+                                    } else {
+                                        // 正常入队
+                                        this.readyQueue.offer(dependentId);
+                                    }
                                 }
                             } else {
                                 // 路径被跳过：启动“跳过”传播
@@ -475,34 +489,35 @@ public class FlowExecutor implements AutoCloseable {
         skipQueue.offer(nodeIdToSkip);
 
         while (!skipQueue.isEmpty()) {
-            String currentNodeId = skipQueue.poll();
-            if (this.skippedNodes.contains(currentNodeId) || this.completedNodes.contains(currentNodeId)) {
-                continue; // 如果节点已经被跳过或已经执行完成，则跳过
-            }
+            final String skipNodeId = skipQueue.poll();
+            this.runNodes.get(skipNodeId).setTaskState(TaskState.SKIPPED);
+            // 先减入度(入度代表的是“上游是否已表态”)
+            final int remaining = this.currentInDegree.get(skipNodeId).decrementAndGet();
 
-            if (this.skippedNodes.add(currentNodeId)) {
+            if (this.skippedNodes.add(skipNodeId)) {
                 try {
                     NodeExecuteResult result = NodeExecuteResult.failed(null)
-                            .setNodeId(currentNodeId)
+                            .setNodeId(skipNodeId)
                             .setSkipped(true)
                             .setErrorMessage("节点被跳过");
                     // 上下文记录节点执行结果
-                    context.addNodeExecuteResult(currentNodeId, result);
+                    context.addNodeExecuteResult(skipNodeId, result);
                     this.executionListener.onNodeCompleted(result);
                 } catch (Exception e) {
                     LOG.error(">> ERROR: 回调 `executionListener.onNodeCompleted()` 时发生异常: ", e);
                 }
+            }
 
-                // 关键：即使是跳过的节点，也要先将它的入度减1
-                if (this.currentInDegree.get(currentNodeId).decrementAndGet() <= 0) {
-                    this.completedTasksNum.incrementAndGet();
-                    // 将跳过状态继续向下游传播
-                    Collection<String> dependents = this.dagGraph.getDownstreamNodes(currentNodeId);
-                    if (dependents != null && dependents.size() > 0) {
-                        skipQueue.addAll(dependents);
-                    }
+            // 只有当入度降为0时，才真正视为该节点“处理完毕”（Finished Skipped），并继续传播
+            if (remaining <= 0) {
+                this.completedTasksNum.incrementAndGet();
+                // 将跳过状态继续向下游传播
+                Collection<String> dependents = this.dagGraph.getDownstreamNodes(skipNodeId);
+                if (dependents != null && dependents.size() > 0) {
+                    skipQueue.addAll(dependents);
                 }
             }
+
         }
     }
 
