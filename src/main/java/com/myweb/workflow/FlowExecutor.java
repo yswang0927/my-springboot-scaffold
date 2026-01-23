@@ -8,7 +8,6 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import com.myweb.workflow.exception.FlowExecuteException;
 import com.myweb.workflow.graph.GNode;
 import com.myweb.workflow.graph.GNodeInput;
@@ -148,8 +147,13 @@ public class FlowExecutor implements AutoCloseable {
         });
     }
 
+    /**
+     * 执行workflow
+     * @param context 执行上下文
+     */
     public void execute(ExecutionContext context) {
         if (this.runNodes.isEmpty()) {
+            LOG.warn(">> WARNING: 没有节点需要执行");
             return;
         }
 
@@ -171,7 +175,7 @@ public class FlowExecutor implements AutoCloseable {
 
         synchronized (this.stateLock) {
             if (this.executionState != ExecutionState.READY) {
-                throw new IllegalStateException("执行器状态不正确: " + this.executionState);
+                throw new FlowExecuteException("执行器状态不正确: " + this.executionState);
             }
             this.executionState = ExecutionState.RUNNING;
         }
@@ -210,6 +214,9 @@ public class FlowExecutor implements AutoCloseable {
 
                 try {
                     NodeExecuteResult taskResult = completedFuture.get();
+                    // 更新节点状态
+                    this.runNodes.get(finishedNodeId).setTaskState(taskResult.isSuccess() ? TaskState.SUCCESS : TaskState.FAILED);
+
                     if (taskResult.isSuccess()) {
                         this.completedNodes.add(finishedNodeId);
                         this.completedTasksNum.incrementAndGet();
@@ -269,6 +276,7 @@ public class FlowExecutor implements AutoCloseable {
                 } catch (CancellationException e) {
                     LOG.warn(">> WARNING: 任务 <{}> 被取消了.", finishedNodeId);
                     NodeExecuteResult failedResult = NodeExecuteResult.failed(e).setNodeId(finishedNodeId).setErrorMessage("节点被取消执行");
+                    this.runNodes.get(finishedNodeId).setTaskState(TaskState.CANCELLED);
                     context.addNodeExecuteResult(finishedNodeId, failedResult);
 
                     if (this.failedTasks.add(failedResult)) {
@@ -363,7 +371,7 @@ public class FlowExecutor implements AutoCloseable {
             return;
         }
 
-        TaskNode runNode = this.runNodes.get(nodeId);
+        final TaskNode runNode = this.runNodes.get(nodeId);
         if (runNode == null) {
             return;
         }
@@ -371,39 +379,43 @@ public class FlowExecutor implements AutoCloseable {
         // 提交一个任务，并返回一个 Future ，任务完成后会自动把 Future 放入内部队列
         Future<NodeExecuteResult> future = this.executorService.submit(() -> {
             Instant startTime = Instant.now();
-            try {
-                if (Thread.currentThread().isInterrupted()) {
-                    return NodeExecuteResult.failed(new InterruptedException("Task interrupted"))
-                            .setNodeId(nodeId)
-                            .setErrorMessage("任务线程被中断")
-                            .setStartTime(startTime)
-                            .setEndTime(Instant.now());
-                }
+            runNode.setTaskState(TaskState.RUNNING);
 
-                // 当执行此节点时，先自动从其上游节点获取输入
-                Collection<GNodeInput> upstreamNodeInputs = dagGraph.getUpstreamNodeInputs(nodeId);
-                NodeInputs inputs = new NodeInputs();
-                for (GNodeInput gNodeInput : upstreamNodeInputs) {
-                    // 上游节点的输出端口->目标节点的输入端口信息
-                    final String sourceNodeId = gNodeInput.getSourceNodeId();
-                    final String sourcePort = gNodeInput.getSourcePort();
-                    final String targetPort = gNodeInput.getTargetPort();
-                    Optional<NodeExecuteResult> sourceNodeExecuteResult = context.getNodeExecuteResult(sourceNodeId);
-                    if (sourceNodeExecuteResult.isPresent()) {
-                        NodeExecuteResult sourceResult = sourceNodeExecuteResult.get();
-                        if (sourceResult != null && sourceResult.isSuccess() && !sourceResult.isSkipped()) {
-                            // 上游节点指定端口的输出写入目标节点的指定输入端口，
-                            // 这样节点中执行时就可以获取到自己输入端口上的数据了
-                            inputs.addInput(targetPort, sourceResult.getNodeOutput(sourcePort));
+            if (Thread.currentThread().isInterrupted()) {
+                return NodeExecuteResult.failed("任务线程被中断", new InterruptedException("Task interrupted"))
+                        .setNodeId(nodeId)
+                        .setStartTime(startTime)
+                        .setEndTime(Instant.now());
+            }
+
+            // 当执行此节点时，先自动从其上游节点获取输入
+            Collection<GNodeInput> upstreamNodeInputs = dagGraph.getUpstreamNodeInputs(nodeId);
+            NodeInputs inputs = new NodeInputs();
+            for (GNodeInput gNodeInput : upstreamNodeInputs) {
+                // 上游节点的输出端口->目标节点的输入端口信息
+                final String sourceNodeId = gNodeInput.getSourceNodeId();
+                final String sourcePort = gNodeInput.getSourcePort();
+                final String targetPort = gNodeInput.getTargetPort();
+                Optional<NodeExecuteResult> sourceNodeExecuteResult = context.getNodeExecuteResult(sourceNodeId);
+                if (sourceNodeExecuteResult.isPresent()) {
+                    NodeExecuteResult sourceResult = sourceNodeExecuteResult.get();
+                    if (sourceResult != null && sourceResult.isSuccess() && !sourceResult.isSkipped()) {
+                        // 上游节点指定端口的输出写入目标节点的指定输入端口，
+                        // 这样节点中执行时就可以获取到自己输入端口上的数据了
+                        NodeOutput nodeOutput = sourceResult.getNodeOutput(sourcePort);
+                        if (nodeOutput != null) {
+                            inputs.addInput(targetPort, nodeOutput);
                         }
                     }
                 }
+            }
 
-                // 开始节点没有输入，使用流程输入作为输入
-                if (runNode instanceof StartNode) {
-                    inputs.addInput(StartNode.DEFAULT_INPUT_PORT_NAME, new NodeOutput(context.getWorkflowInput()));
-                }
+            // 开始节点没有输入，使用流程输入作为输入
+            if (runNode instanceof StartNode) {
+                inputs.addInput(StartNode.DEFAULT_INPUT_PORT_NAME, new NodeOutput(context.getWorkflowInput()));
+            }
 
+            try {
                 NodeExecuteResult result = runNode.call(context, inputs);
                 result.setNodeId(nodeId);
                 result.setStartTime(startTime);
@@ -411,9 +423,9 @@ public class FlowExecutor implements AutoCloseable {
                 return result;
             } catch (Exception e) {
                 return NodeExecuteResult.failed(e)
-                        .setNodeId(nodeId)
-                        .setStartTime(startTime)
-                        .setEndTime(Instant.now());
+                            .setNodeId(nodeId)
+                            .setStartTime(startTime)
+                            .setEndTime(Instant.now());
             }
         });
 
@@ -490,18 +502,19 @@ public class FlowExecutor implements AutoCloseable {
 
         while (!skipQueue.isEmpty()) {
             final String skipNodeId = skipQueue.poll();
-            this.runNodes.get(skipNodeId).setTaskState(TaskState.SKIPPED);
             // 先减入度(入度代表的是“上游是否已表态”)
             final int remaining = this.currentInDegree.get(skipNodeId).decrementAndGet();
 
             if (this.skippedNodes.add(skipNodeId)) {
+                // 更新节点状态
+                this.runNodes.get(skipNodeId).setTaskState(TaskState.SKIPPED);
+                NodeExecuteResult result = NodeExecuteResult.failed("节点被跳过")
+                        .setNodeId(skipNodeId)
+                        .setSkipped(true);
+                // 上下文记录节点执行结果
+                context.addNodeExecuteResult(skipNodeId, result);
+
                 try {
-                    NodeExecuteResult result = NodeExecuteResult.failed(null)
-                            .setNodeId(skipNodeId)
-                            .setSkipped(true)
-                            .setErrorMessage("节点被跳过");
-                    // 上下文记录节点执行结果
-                    context.addNodeExecuteResult(skipNodeId, result);
                     this.executionListener.onNodeCompleted(result);
                 } catch (Exception e) {
                     LOG.error(">> ERROR: 回调 `executionListener.onNodeCompleted()` 时发生异常: ", e);
@@ -532,6 +545,8 @@ public class FlowExecutor implements AutoCloseable {
 
             if (this.runningFutures.size() > 0) {
                 for (Map.Entry<String, Future<NodeExecuteResult>> en : this.runningFutures.entrySet()) {
+                    // 更新节点状态
+                    this.runNodes.get(en.getKey()).setTaskState(TaskState.CANCELLED);
                     Future<NodeExecuteResult> f = en.getValue();
                     if (!f.isDone() && !f.isCancelled()) {
                         try {

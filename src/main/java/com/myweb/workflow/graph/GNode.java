@@ -9,7 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
-public class GNode {
+public class GNode implements Cloneable {
 
     public static final String DEFAULT_INPUT_PORT_NAME = "input";
     public static final String DEFAULT_OUTPUT_PORT_NAME = "output";
@@ -66,6 +66,17 @@ public class GNode {
 
     public boolean isValidNode() {
         return StringUtils.hasText(id);
+    }
+
+    public GNode clone() {
+        GNode cloned = new GNode();
+        cloned.setId(id);
+        cloned.setType(type);
+        if (data != null) {
+            cloned.setData(new HashMap<>(data));
+        }
+        cloned.setDynamicProps(new LinkedHashMap<>(dynamicProps));
+        return cloned;
     }
 
     @Override

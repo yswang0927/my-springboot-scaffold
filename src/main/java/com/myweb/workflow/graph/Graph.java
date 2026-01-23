@@ -230,9 +230,10 @@ public class Graph {
      * “寻找指定节点的所有前驱节点及其路径” 或 “反向可达子图”
      *
      * @param targetNodeId 指定的目标节点
+     * @param includeTargetNode 是否包含目标节点
      * @return 可达子图, 如果目标节点不存在, 则返回 null
      */
-    public Graph findSubGraphReachingTarget(String targetNodeId) {
+    public Graph findSubGraphReachingTarget(String targetNodeId, boolean includeTargetNode) {
         ensureInitialized();
 
         if (targetNodeId == null || targetNodeId.isEmpty()) {
@@ -248,7 +249,12 @@ public class Graph {
             if (targetNode == null) {
                 return null;
             }
-            return new Graph(Arrays.asList(targetNode), null);
+            // 如果不包含目标节点，则返回 null
+            if (!includeTargetNode) {
+                return null;
+            }
+
+            return new Graph(Arrays.asList(targetNode.clone()), null);
         }
 
         // 使用BFS反向遍历所有能够达到 targetNodeId 的节点
@@ -263,10 +269,10 @@ public class Graph {
             }
             visited.add(nodeId);
 
-            Set<String> predecessors = this.reverseAdjacencyList.getOrDefault(nodeId, Collections.emptySet());
-            for (String predecessor : predecessors) {
-                if (!visited.contains(predecessor)) {
-                    queue.add(predecessor);
+            Set<String> upstreams = this.reverseAdjacencyList.getOrDefault(nodeId, Collections.emptySet());
+            for (String up : upstreams) {
+                if (!visited.contains(up)) {
+                    queue.add(up);
                 }
             }
         }
@@ -276,13 +282,21 @@ public class Graph {
 
         for (GNode node : this.nodes) {
             if (visited.contains(node.getId())) {
-                subNodes.add(node);
+                // 如果不包含目标节点，则跳过目标节点
+                if (!includeTargetNode && node.getId().equals(targetNodeId)) {
+                    continue;
+                }
+                subNodes.add(node.clone());
             }
         }
 
         for (GEdge edge : this.edges) {
             if (visited.contains(edge.getSource()) && visited.contains(edge.getTarget())) {
-                subEdges.add(edge);
+                // 如果不包含目标节点，则跳过连接到目标节点的边
+                if (!includeTargetNode && edge.getTarget().equals(targetNodeId)) {
+                    continue;
+                }
+                subEdges.add(edge.clone());
             }
         }
 

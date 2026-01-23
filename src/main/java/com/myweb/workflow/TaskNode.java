@@ -23,6 +23,13 @@ public interface TaskNode {
     TaskState getTaskState();
 
     /**
+     * 设置节点的触发规则
+     */
+    default TaskTriggerRule getTriggerRule() {
+        return TaskTriggerRule.ALL_SUCCESS;
+    }
+
+    /**
      * 节点失败后的最大重试次数
      */
     default int getMaxRetries() {

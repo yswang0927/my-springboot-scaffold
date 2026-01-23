@@ -9,6 +9,7 @@ import java.util.*;
  */
 public class FlowExecuteResult {
     private List<String> succeedNodes = new ArrayList<>();
+    // <nodeId, failedReason>
     private Map<String, String> failedNodes = new HashMap<>();
 
     private Instant startTime;

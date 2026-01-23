@@ -28,8 +28,16 @@ public class NodeExecuteResult {
         return new NodeExecuteResult(true, null);
     }
 
+    public static NodeExecuteResult failed(String errorMessage) {
+        return new NodeExecuteResult(false, null).setErrorMessage(errorMessage);
+    }
+
     public static NodeExecuteResult failed(Throwable error) {
         return new NodeExecuteResult(false, error);
+    }
+
+    public static NodeExecuteResult failed(String errorMessage, Throwable error) {
+        return new NodeExecuteResult(false, error).setErrorMessage(errorMessage);
     }
 
     public String getNodeId() {
@@ -61,8 +69,8 @@ public class NodeExecuteResult {
         return this.nextNodesToActivate;
     }
 
-    public NodeOutput getNodeOutput(String port) {
-        return this.nodeOutputs.get(port);
+    public NodeOutput getNodeOutput(String outputPort) {
+        return this.nodeOutputs.get(outputPort);
     }
 
     public NodeExecuteResult addNodeOutput(String outputPort, NodeOutput nodeOutput) {

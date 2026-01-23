@@ -5,37 +5,36 @@ import org.springframework.util.StringUtils;
 
 import java.util.Objects;
 
-public class GEdge {
+public class GEdge implements Cloneable {
     /**
      * 边ID
      */
     private String id;
+
     /**
      * 源节点ID
      */
+    @JsonAlias({"source", "from"})
     private String source;
+
     /**
      * 目标节点ID
      */
+    @JsonAlias({"target", "to"})
     private String target;
+
     /**
      * 源节点的输出端口(如果源节点只有一个输出端口,则默认名称为output)
      */
-    @JsonAlias({"sourceHandle", "source_handle", "sourcePort", "source_port"})
+    @JsonAlias({"sourceHandle", "source_handle", "sourcePort", "source_port", "fromPort", "from_port"})
     private String sourceHandle = GNode.DEFAULT_OUTPUT_PORT_NAME;
     /**
      * 目标节点的输入端口(如果目标节点只有一个输入端口,则默认名称为input)
      */
-    @JsonAlias({"targetHandle", "target_handle", "targetPort", "target_port"})
+    @JsonAlias({"targetHandle", "target_handle", "targetPort", "target_port", "toPort", "to_port"})
     private String targetHandle = GNode.DEFAULT_INPUT_PORT_NAME;
 
     public GEdge() {}
-
-    public GEdge(String id, String source, String target) {
-        this.id = id;
-        this.source = source;
-        this.target = target;
-    }
 
     public String getId() {
         return id;
@@ -85,6 +84,16 @@ public class GEdge {
         return StringUtils.hasText(id) && StringUtils.hasText(source) && StringUtils.hasText(target);
     }
 
+    public GEdge clone() {
+        GEdge cloned = new GEdge();
+        cloned.setId(id);
+        cloned.setSource(source);
+        cloned.setTarget(target);
+        cloned.setSourceHandle(sourceHandle);
+        cloned.setTargetHandle(targetHandle);
+        return cloned;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (!(o instanceof GEdge gEdge)) {
@@ -111,4 +120,5 @@ public class GEdge {
                 ", targetHandle='" + targetHandle + '\'' +
                 '}';
     }
+
 }
