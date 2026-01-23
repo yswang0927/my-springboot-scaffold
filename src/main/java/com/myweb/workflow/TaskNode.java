@@ -1,6 +1,10 @@
 package com.myweb.workflow;
 
 public interface TaskNode {
+    // 一个节点的默认输入端口名称
+    // 如果节点有多个输入端口，则节点自行定义端口名称
+    String DEFAULT_INPUT_PORT_NAME = "input";
+    String DEFAULT_OUTPUT_PORT_NAME = "output";
 
     /**
      * 节点ID

@@ -26,7 +26,8 @@ public class StartNode extends AbstractNode {
     public NodeExecuteResult call(ExecutionContext context, NodeInputs inputs) throws Exception {
         // 开始节点没有端口输入，直接透传workflow的原始输入
         List<NodeOutput> sourceInputs = inputs.getInput(StartNode.DEFAULT_INPUT_PORT_NAME);
-        return NodeExecuteResult.success().addNodeOutput("output", sourceInputs.size() > 0 ? sourceInputs.get(0) : null);
+        return NodeExecuteResult.success()
+                .addNodeOutput(StartNode.DEFAULT_OUTPUT_PORT_NAME, sourceInputs.size() > 0 ? sourceInputs.get(0) : null);
     }
 
 }

@@ -13,9 +13,10 @@ public class NodeExecuteResult {
     private final Throwable error;
     private String errorMessage = "";
     private boolean skipped = false;
+    // 此节点执行后，待激活的后续节点(分支节点需要设置此值)
+    private Set<String> nextNodesToActivate = new HashSet<>();
     // 节点的输出<Port, NodeOutput>
     private Map<String, NodeOutput> nodeOutputs = new HashMap<>();
-    private Set<String> nextNodesToActivate = new HashSet<>();
     private Instant startTime;
     private Instant endTime;
 
@@ -69,10 +70,12 @@ public class NodeExecuteResult {
         return this.nextNodesToActivate;
     }
 
-    public NodeOutput getNodeOutput(String outputPort) {
-        return this.nodeOutputs.get(outputPort);
-    }
-
+    /**
+     * 将输出数据添加指定的输出端口上
+     * @param outputPort 输出端口
+     * @param nodeOutput 节点输出
+     * @return this
+     */
     public NodeExecuteResult addNodeOutput(String outputPort, NodeOutput nodeOutput) {
         if (outputPort != null && nodeOutput != null) {
             this.nodeOutputs.put(outputPort, nodeOutput);
@@ -80,22 +83,11 @@ public class NodeExecuteResult {
         return this;
     }
 
-    public Instant getStartTime() {
-        return startTime;
-    }
-
-    public NodeExecuteResult setStartTime(Instant startTime) {
-        this.startTime = startTime;
-        return this;
-    }
-
-    public Instant getEndTime() {
-        return endTime;
-    }
-
-    public NodeExecuteResult setEndTime(Instant endTime) {
-        this.endTime = endTime;
-        return this;
+    /**
+     * 获取指定输出端口上的输出数据
+     */
+    public NodeOutput getNodeOutput(String outputPort) {
+        return this.nodeOutputs.get(outputPort);
     }
 
     public NodeExecuteResult setErrorMessage(String message) {
@@ -121,6 +113,24 @@ public class NodeExecuteResult {
 
     public NodeExecuteResult setSkipped(boolean skipped) {
         this.skipped = skipped;
+        return this;
+    }
+
+    public Instant getStartTime() {
+        return startTime;
+    }
+
+    public NodeExecuteResult setStartTime(Instant startTime) {
+        this.startTime = startTime;
+        return this;
+    }
+
+    public Instant getEndTime() {
+        return endTime;
+    }
+
+    public NodeExecuteResult setEndTime(Instant endTime) {
+        this.endTime = endTime;
         return this;
     }
 
