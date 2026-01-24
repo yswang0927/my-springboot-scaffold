@@ -61,7 +61,7 @@ public class FlowExecutor implements AutoCloseable {
      * 执行状态
      */
     public enum ExecutionState {
-        READY, RUNNING, CANCELLED, COMPLETED, FAILED
+        READY, RUNNING, CANCELLED, COMPLETED, FAILED, PAUSED
     }
 
     public FlowExecutor(Graph flowGraph, ExecutionListener listener) {

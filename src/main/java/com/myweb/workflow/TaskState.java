@@ -10,5 +10,6 @@ public enum TaskState {
     FAILED,          // 执行失败
     SKIPPED,         // 被跳过
     CANCELLED,        // 被取消
+    PAUSED,          // 被暂停
     UPSTREAM_FAILED;  // 因上游失败而无法运行
 }

@@ -6,7 +6,7 @@ import java.io.PrintWriter;
 /**
  * 轻量级异常类，通过禁用堆栈追踪（stack trace）的生成和打印来减少异常抛出时的开销。
  */
-public abstract class FastException extends RuntimeException {
+abstract class FastException extends RuntimeException {
     public FastException() {
         super();
     }

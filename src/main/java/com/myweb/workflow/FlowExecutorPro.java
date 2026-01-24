@@ -9,6 +9,9 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.myweb.workflow.exception.FlowExecuteException;
+import com.myweb.workflow.exception.FlowFailException;
+import com.myweb.workflow.exception.FlowPauseException;
+import com.myweb.workflow.exception.FlowSkipException;
 import com.myweb.workflow.graph.GNode;
 import com.myweb.workflow.graph.GNodeInput;
 import com.myweb.workflow.graph.Graph;
@@ -60,7 +63,7 @@ public class FlowExecutorPro implements AutoCloseable {
     private final Graph dagGraph;
 
     public enum ExecutionState {
-        READY, RUNNING, CANCELLED, COMPLETED, FAILED
+        READY, RUNNING, CANCELLED, COMPLETED, FAILED, PAUSED;
     }
 
     public FlowExecutorPro(Graph flowGraph, ExecutionListener listener) {
@@ -207,16 +210,45 @@ public class FlowExecutorPro implements AutoCloseable {
                 try {
                     NodeExecutionResult taskResult = completedFuture.get();
                     handleTaskCompletion(finishedNodeId, taskResult, context);
-                } catch (CancellationException e) {
+                } catch (ExecutionException e) {
+                    // 拆包获取真实的业务异常
+                    Throwable cause = e.getCause();
+
+                    NodeExecutionResult execResult = NodeExecutionResult.failed(cause)
+                            .setNodeId(finishedNodeId)
+                            .setEndTime(Instant.now());
+
+                    if (cause instanceof FlowPauseException) {
+                        // 场景 1: 流程暂停 (如: 屏幕交互)
+                        handleTaskPause(finishedNodeId, (FlowPauseException) cause, context);
+                    }
+                    else if (cause instanceof FlowSkipException) {
+                        // 场景 2: 动态跳过 (如: 无数据)
+                        handleTaskSkip(finishedNodeId, (FlowSkipException) cause, context);
+                    }
+                    else if (cause instanceof FlowFailException) {
+                        // 场景 3: 快速失败 (忽略重试)
+                        handleTaskFailure(execResult, context, false);
+                    }
+                    else {
+                        // 场景 4: 普通异常 (走默认重试机制)
+                        handleTaskFailure(execResult, context, true);
+                    }
+
+                }
+                catch (CancellationException e) {
                     handleCancellation(finishedNodeId, context);
-                } catch (InterruptedException e) {
+                }
+                catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     cancelAllRunningTasks();
                     break;
-                } catch (Exception e) {
-                    // 系统级异常，视为失败
-                    handleTaskFailure(NodeExecutionResult.failed(e).setNodeId(finishedNodeId), context);
                 }
+                catch (Exception e) {
+                    // 系统级异常，视为失败
+                    handleTaskFailure(NodeExecutionResult.failed(e).setNodeId(finishedNodeId), context, true);
+                }
+
             } // end while
 
             finalizeExecution(flowExecutionResult);
@@ -250,37 +282,40 @@ public class FlowExecutorPro implements AutoCloseable {
             evaluateAndTriggerDownstream(nodeId, context, result.getNextNodesToActivate());
         } else {
             // 失败处理 (内部包含重试逻辑)
-            handleTaskFailure(result, context);
+            handleTaskFailure(result, context, true);
         }
     }
 
     /**
      * 处理任务失败（含重试逻辑）
      */
-    private void handleTaskFailure(NodeExecutionResult failedResult, ExecutionContext context) {
+    private void handleTaskFailure(NodeExecutionResult failedResult, ExecutionContext context, final boolean needRetry) {
         if (this.failedTasks.contains(failedResult)) {
             return;
         }
 
         final String failedNodeId = failedResult.getNodeId();
         TaskNode failedNode = this.runNodes.get(failedNodeId);
-        // 检查重试
-        int maxRetries = failedNode.getMaxRetries();
-        if (this.retryCounts.get(failedNodeId).incrementAndGet() <= maxRetries) {
-            LOG.warn(">> WARNING: Retry task <{}>", failedNodeId);
-            this.scheduledRetryTasksNum.incrementAndGet();
-            this.retryExecutorService.schedule(() -> {
-                this.scheduledRetryTasksNum.decrementAndGet();
-                submitTask(failedNodeId, context);
-            }, failedNode.getRetryDelayMillis(), TimeUnit.MILLISECONDS);
-            return; // 正在重试，暂不视为完结
+
+        if (needRetry) {
+            // 检查重试
+            int maxRetries = failedNode.getMaxRetries();
+            if (this.retryCounts.get(failedNodeId).incrementAndGet() <= maxRetries) {
+                LOG.warn(">> WARNING: Retry task <{}>", failedNodeId);
+                this.scheduledRetryTasksNum.incrementAndGet();
+                this.retryExecutorService.schedule(() -> {
+                    this.scheduledRetryTasksNum.decrementAndGet();
+                    submitTask(failedNodeId, context);
+                }, failedNode.getRetryDelayMillis(), TimeUnit.MILLISECONDS);
+                return; // 正在重试，暂不视为完结
+            }
         }
 
         // 最终失败
         LOG.error(">> ERROR: Task <{}> failed after retries.", failedNodeId);
         failedNode.setTaskState(TaskState.FAILED);
         this.failedTasks.add(failedResult);
-        this.completedTasksNum.incrementAndGet(); // 计数完成
+        this.completedTasksNum.incrementAndGet(); // 计数+1
         context.addNodeExecutionResult(failedNodeId, failedResult);
         notifyNodeCompletion(failedResult);
 
@@ -288,14 +323,64 @@ public class FlowExecutorPro implements AutoCloseable {
         evaluateAndTriggerDownstream(failedNodeId, context, null);
     }
 
+    private void handleTaskSkip(String nodeId, FlowSkipException ex, ExecutionContext context) {
+        LOG.info(">> Task <{}> skipped programmatically.", nodeId);
+
+        TaskNode node = this.runNodes.get(nodeId);
+        node.setTaskState(TaskState.SKIPPED);
+
+        NodeExecutionResult result = NodeExecutionResult.failed("Skipped by logic")
+                .setNodeId(nodeId)
+                .setSkipped(true)
+                .setErrorMessage(ex.getMessage());
+
+        context.addNodeExecutionResult(nodeId, result);
+        this.completedTasksNum.incrementAndGet(); // 计数+1
+        this.completedNodes.add(nodeId);
+
+        notifyNodeCompletion(result);
+
+        // 【关键】：跳过也被视为一种完成，必须评估下游
+        // 下游是否运行取决于 TriggerRule (如 ALL_SKIPPED 或 ALL_SUCCESS 等)
+        evaluateAndTriggerDownstream(nodeId, context, null);
+    }
+
+    private void handleTaskPause(String nodeId, FlowPauseException ex, ExecutionContext context) {
+        LOG.info(">> Task <{}> paused flow. Reason: {}", nodeId, ex.getMessage());
+
+        synchronized (this.stateLock) {
+            // 1. 修改全局执行状态为 PAUSED
+            // 这会让 execute 主循环条件不满足，从而跳出循环，停止提交新任务
+            // 注意：已经在运行的其他线程任务会继续跑完，这通常是合理的
+            this.executionState = ExecutionState.PAUSED;
+        }
+
+        TaskNode node = this.runNodes.get(nodeId);
+        // 2. 更新节点状态
+        node.setTaskState(TaskState.PAUSED);
+        // 3. 记录结果
+        // 假设 FlowPauseException 里可以携带 UI 数据
+        NodeExecutionResult result = NodeExecutionResult.failed("Paused for interaction")
+                .setNodeId(nodeId)
+                .setErrorMessage(ex.getMessage());
+
+        // TODO 如果你的 FlowPauseException 有 payload (比如前端需要的 JSON)，记得塞入 result
+        //result.addNodeOutput("ui_schema", new NodeOutput(exception.getUiData()));
+
+        context.addNodeExecutionResult(nodeId, result);
+        // 4. 通知监听器 (外部系统收到此事件后，应持久化当前 context 和 graph 状态)
+        notifyNodeCompletion(result);
+    }
+
     private void handleCancellation(String nodeId, ExecutionContext context) {
         LOG.warn(">> Task <{}> Cancelled.", nodeId);
         NodeExecutionResult res = NodeExecutionResult.failed("Task Cancelled").setNodeId(nodeId);
         this.runNodes.get(nodeId).setTaskState(TaskState.CANCELLED);
-        this.failedTasks.add(res);
         this.completedTasksNum.incrementAndGet();
+        this.failedTasks.add(res);
         context.addNodeExecutionResult(nodeId, res);
         notifyNodeCompletion(res);
+
         // 取消通常意味着流程终止，或者可以视为 FAILED 触发下游
         evaluateAndTriggerDownstream(nodeId, context, null);
     }
@@ -420,11 +505,13 @@ public class FlowExecutorPro implements AutoCloseable {
             }
 
             node.setTaskState(TaskState.SKIPPED);
-            NodeExecutionResult result = NodeExecutionResult.failed(reason).setNodeId(nodeId).setSkipped(true);
+            NodeExecutionResult result = NodeExecutionResult.failed(reason)
+                    .setNodeId(nodeId)
+                    .setSkipped(true);
 
-            context.addNodeExecutionResult(nodeId, result);
-            this.completedTasksNum.incrementAndGet();
             this.completedNodes.add(nodeId);
+            this.completedTasksNum.incrementAndGet();
+            context.addNodeExecutionResult(nodeId, result);
             notifyNodeCompletion(result);
 
             evaluateAndTriggerDownstream(nodeId, context, null);
