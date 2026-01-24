@@ -24,4 +24,12 @@ public interface ExecutionListener {
      */
     void onFlowCompleted(FlowExecutionResult result);
 
+    /**
+     * 当流程被暂停时，将调用此方法，可以用于保存当前流程的执行状态和后期用于恢复流程。
+     * @param executionId 流程执行ID
+     * @param flowStateData 流程状态数据
+     */
+    default void onFlowPaused(String executionId, String flowStateData) {
+    }
+
 }
