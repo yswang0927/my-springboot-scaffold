@@ -7,7 +7,7 @@ import java.util.*;
 /**
  * 整个工作流的执行结果.
  */
-public class FlowExecuteResult {
+public class FlowExecutionResult {
     private List<String> succeedNodes = new ArrayList<>();
     // <nodeId, failedReason>
     private Map<String, String> failedNodes = new HashMap<>();
@@ -21,7 +21,7 @@ public class FlowExecuteResult {
         return startTime;
     }
 
-    public FlowExecuteResult setStartTime(Instant startTime) {
+    public FlowExecutionResult setStartTime(Instant startTime) {
         this.startTime = startTime;
         return this;
     }
@@ -30,7 +30,7 @@ public class FlowExecuteResult {
         return endTime;
     }
 
-    public FlowExecuteResult setEndTime(Instant endTime) {
+    public FlowExecutionResult setEndTime(Instant endTime) {
         this.endTime = endTime;
         return this;
     }
@@ -43,21 +43,21 @@ public class FlowExecuteResult {
         this.success = success;
     }
 
-    public FlowExecuteResult addSucceedNode(String nodeId) {
+    public FlowExecutionResult addSucceedNode(String nodeId) {
         if (nodeId != null) {
             this.succeedNodes.add(nodeId);
         }
         return this;
     }
 
-    public FlowExecuteResult setSucceedNodes(Collection<String> succeedNodeIds) {
+    public FlowExecutionResult setSucceedNodes(Collection<String> succeedNodeIds) {
         if (succeedNodeIds != null && succeedNodeIds.size() > 0) {
             this.succeedNodes.addAll(succeedNodeIds);
         }
         return this;
     }
 
-    public FlowExecuteResult addFailedNode(String nodeId, String failedReason) {
+    public FlowExecutionResult addFailedNode(String nodeId, String failedReason) {
         if (nodeId != null) {
             this.failedNodes.put(nodeId, failedReason != null ? failedReason : "");
         }

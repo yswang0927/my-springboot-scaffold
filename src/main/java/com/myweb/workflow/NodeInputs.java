@@ -4,7 +4,6 @@ import java.util.*;
 
 /**
  * 此节点上的输入
- * @author yswang
  */
 public class NodeInputs {
     /**
@@ -33,16 +32,29 @@ public class NodeInputs {
      * @param inputPort 输入端口
      * @return  数据
      */
-    public List<NodeOutput> getInput(String inputPort) {
+    public List<NodeOutput> getAllInputs(String inputPort) {
         return this.portInputs.getOrDefault(inputPort, Collections.emptyList());
     }
 
     /**
-     * 从默认名为 "input" 的输入端口上获取数据
-     * @return  数据
+     * 获取指定端口的第一个输入数据，并转为指定类型 (最常用场景)
+     * @param inputPort 输入端口
+     * @param type 数据类型
      */
-    public List<NodeOutput> getInput() {
-        return this.getInput("input");
+    public <T> T getInput(String inputPort, Class<T> type) {
+        List<NodeOutput> outputs = getAllInputs(inputPort);
+        if (outputs.isEmpty()) {
+            return null;
+        }
+        // 默认取第一个，因为大部分场景是 1对1 传递
+        return outputs.get(0).getPayload(type);
+    }
+
+    /**
+     * 默认端口 "input" 获取数据
+     */
+    public <T> T getInput(Class<T> type) {
+        return getInput(TaskNode.DEFAULT_INPUT_PORT_NAME, type);
     }
 
     public boolean isEmpty() {

@@ -15,13 +15,13 @@ public interface ExecutionListener {
      *
      * @param result 节点的执行结果
      */
-    void onNodeCompleted(NodeExecuteResult result);
+    void onNodeCompleted(NodeExecutionResult result);
 
     /**
      * 当整个工作流执行完毕
      *
      * @param result 工作流的最终执行结果
      */
-    void onFlowCompleted(FlowExecuteResult result);
+    void onFlowCompleted(FlowExecutionResult result);
 
 }

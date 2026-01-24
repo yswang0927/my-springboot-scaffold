@@ -7,7 +7,7 @@ import java.util.*;
 /**
  * 节点执行结果.
  */
-public class NodeExecuteResult {
+public class NodeExecutionResult {
     private String nodeId;
     private final boolean success;
     private final Throwable error;
@@ -20,32 +20,32 @@ public class NodeExecuteResult {
     private Instant startTime;
     private Instant endTime;
 
-    private NodeExecuteResult(boolean success, Throwable error) {
+    private NodeExecutionResult(boolean success, Throwable error) {
         this.success = success;
         this.error = error;
     }
 
-    public static NodeExecuteResult success() {
-        return new NodeExecuteResult(true, null);
+    public static NodeExecutionResult success() {
+        return new NodeExecutionResult(true, null);
     }
 
-    public static NodeExecuteResult failed(String errorMessage) {
-        return new NodeExecuteResult(false, null).setErrorMessage(errorMessage);
+    public static NodeExecutionResult failed(String errorMessage) {
+        return new NodeExecutionResult(false, null).setErrorMessage(errorMessage);
     }
 
-    public static NodeExecuteResult failed(Throwable error) {
-        return new NodeExecuteResult(false, error);
+    public static NodeExecutionResult failed(Throwable error) {
+        return new NodeExecutionResult(false, error);
     }
 
-    public static NodeExecuteResult failed(String errorMessage, Throwable error) {
-        return new NodeExecuteResult(false, error).setErrorMessage(errorMessage);
+    public static NodeExecutionResult failed(String errorMessage, Throwable error) {
+        return new NodeExecutionResult(false, error).setErrorMessage(errorMessage);
     }
 
     public String getNodeId() {
         return nodeId;
     }
 
-    public NodeExecuteResult setNodeId(String nodeId) {
+    NodeExecutionResult setNodeId(String nodeId) {
         this.nodeId = nodeId;
         return this;
     }
@@ -58,7 +58,7 @@ public class NodeExecuteResult {
         return error;
     }
 
-    public NodeExecuteResult setNextNodesToActivate(Collection<String> nextNodeIds) {
+    public NodeExecutionResult setNextNodesToActivate(Collection<String> nextNodeIds) {
         this.nextNodesToActivate.clear();
         if (nextNodeIds != null && nextNodeIds.size() > 0) {
             this.nextNodesToActivate.addAll(nextNodeIds);
@@ -76,7 +76,7 @@ public class NodeExecuteResult {
      * @param nodeOutput 节点输出
      * @return this
      */
-    public NodeExecuteResult addNodeOutput(String outputPort, NodeOutput nodeOutput) {
+    public NodeExecutionResult addNodeOutput(String outputPort, NodeOutput nodeOutput) {
         if (outputPort != null && nodeOutput != null) {
             this.nodeOutputs.put(outputPort, nodeOutput);
         }
@@ -90,7 +90,7 @@ public class NodeExecuteResult {
         return this.nodeOutputs.get(outputPort);
     }
 
-    public NodeExecuteResult setErrorMessage(String message) {
+    public NodeExecutionResult setErrorMessage(String message) {
         this.errorMessage = message;
         return this;
     }
@@ -111,7 +111,7 @@ public class NodeExecuteResult {
         return skipped;
     }
 
-    public NodeExecuteResult setSkipped(boolean skipped) {
+    public NodeExecutionResult setSkipped(boolean skipped) {
         this.skipped = skipped;
         return this;
     }
@@ -120,7 +120,7 @@ public class NodeExecuteResult {
         return startTime;
     }
 
-    public NodeExecuteResult setStartTime(Instant startTime) {
+    public NodeExecutionResult setStartTime(Instant startTime) {
         this.startTime = startTime;
         return this;
     }
@@ -129,7 +129,7 @@ public class NodeExecuteResult {
         return endTime;
     }
 
-    public NodeExecuteResult setEndTime(Instant endTime) {
+    public NodeExecutionResult setEndTime(Instant endTime) {
         this.endTime = endTime;
         return this;
     }
@@ -147,7 +147,7 @@ public class NodeExecuteResult {
 
     @Override
     public boolean equals(Object o) {
-        if (!(o instanceof NodeExecuteResult that)) {
+        if (!(o instanceof NodeExecutionResult that)) {
             return false;
         }
         return Objects.equals(nodeId, that.nodeId);

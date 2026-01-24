@@ -3,7 +3,7 @@ package com.myweb.workflow.nodes;
 import java.util.Map;
 
 import com.myweb.workflow.ExecutionContext;
-import com.myweb.workflow.NodeExecuteResult;
+import com.myweb.workflow.NodeExecutionResult;
 import com.myweb.workflow.NodeInputs;
 import com.myweb.workflow.graph.GNode;
 
@@ -26,7 +26,7 @@ public class HttpNode extends AbstractNode {
     }
 
     @Override
-    public NodeExecuteResult call(ExecutionContext context, NodeInputs inputs) throws Exception {
+    public NodeExecutionResult call(ExecutionContext context, NodeInputs inputs) throws Exception {
 
         String url = (String) httpData.getOrDefault("url", "");
         String method = (String) httpData.getOrDefault("method", "GET");

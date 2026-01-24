@@ -49,11 +49,11 @@ public interface TaskNode {
 
     /**
      * 节点执行
-     * @param context 执行上下文
-     * @param inputs 节点的输入数据
+     * @param context 执行上下文，可以从上下文中获取一些全局数据
+     * @param inputs 节点的输入数据，可以从中获取此节点输入端口上的数据
      * @return 执行结果
      * @throws Exception
      */
-    NodeExecuteResult call(ExecutionContext context, NodeInputs inputs) throws Exception;
+    NodeExecutionResult call(ExecutionContext context, NodeInputs inputs) throws Exception;
 
 }

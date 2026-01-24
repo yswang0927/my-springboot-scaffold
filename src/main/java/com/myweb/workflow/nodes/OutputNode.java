@@ -1,7 +1,7 @@
 package com.myweb.workflow.nodes;
 
 import com.myweb.workflow.ExecutionContext;
-import com.myweb.workflow.NodeExecuteResult;
+import com.myweb.workflow.NodeExecutionResult;
 import com.myweb.workflow.NodeInputs;
 import com.myweb.workflow.NodeOutput;
 import com.myweb.workflow.graph.GNode;
@@ -20,8 +20,8 @@ public class OutputNode extends AbstractNode {
     }
 
     @Override
-    public NodeExecuteResult call(ExecutionContext context, NodeInputs inputs) throws Exception {
-        List<NodeOutput> allInputs = inputs.getInput(OutputNode.DEFAULT_INPUT_PORT_NAME);
+    public NodeExecutionResult call(ExecutionContext context, NodeInputs inputs) throws Exception {
+        List<NodeOutput> allInputs = inputs.getAllInputs(OutputNode.DEFAULT_INPUT_PORT_NAME);
         return null;
     }
 

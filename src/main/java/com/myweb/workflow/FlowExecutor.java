@@ -33,14 +33,14 @@ public class FlowExecutor implements AutoCloseable {
     private final ConcurrentMap<String, AtomicInteger> retryCounts = new ConcurrentHashMap<>();
 
     // 存储处于执行中的节点信息
-    private final ConcurrentMap<String, Future<NodeExecuteResult>> runningFutures = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, Future<NodeExecutionResult>> runningFutures = new ConcurrentHashMap<>();
     // Future到NodeId的映射, 用于快速找到 nodeId
-    private final ConcurrentMap<Future<NodeExecuteResult>, String> future2NodeIdMap = new ConcurrentHashMap<>();
+    private final ConcurrentMap<Future<NodeExecutionResult>, String> future2NodeIdMap = new ConcurrentHashMap<>();
 
     private final AtomicInteger completedTasksNum = new AtomicInteger(0);
     // 已排程但尚未触发的重试
     private final AtomicInteger scheduledRetryTasksNum = new AtomicInteger(0);
-    private final Set<NodeExecuteResult> failedTasks = ConcurrentHashMap.newKeySet();
+    private final Set<NodeExecutionResult> failedTasks = ConcurrentHashMap.newKeySet();
 
     // 执行完成的节点
     private final Set<String> completedNodes = ConcurrentHashMap.newKeySet();
@@ -50,7 +50,7 @@ public class FlowExecutor implements AutoCloseable {
     private final Object stateLock = new Object();
     private volatile ExecutionState executionState = ExecutionState.READY;
 
-    private final ExecutorCompletionService<NodeExecuteResult> executorService;
+    private final ExecutorCompletionService<NodeExecutionResult> executorService;
     private final ScheduledExecutorService retryExecutorService;
     private final ExecutionListener executionListener;
     private ExecutorService threadPoolExecutor;
@@ -107,7 +107,7 @@ public class FlowExecutor implements AutoCloseable {
         this.initialize();
 
         this.executionListener = listener != null ? listener : new DefaultExecutionListener();
-        this.executorService = new ExecutorCompletionService<NodeExecuteResult>(executor != null ? executor : this.threadPoolExecutor);
+        this.executorService = new ExecutorCompletionService<NodeExecutionResult>(executor != null ? executor : this.threadPoolExecutor);
         this.retryExecutorService = Executors.newSingleThreadScheduledExecutor();
     }
 
@@ -167,8 +167,8 @@ public class FlowExecutor implements AutoCloseable {
             LOG.error(">> ERROR: 回调 `executionListener.onFlowStart()` 时发生异常: ", e);
         }
 
-        FlowExecuteResult flowExecuteResult = new FlowExecuteResult();
-        flowExecuteResult.setStartTime(Instant.now());
+        FlowExecutionResult flowExecutionResult = new FlowExecutionResult();
+        flowExecutionResult.setStartTime(Instant.now());
 
         // 重置状态
         resetExecutionState();
@@ -192,7 +192,7 @@ public class FlowExecutor implements AutoCloseable {
                     && this.executionState == ExecutionState.RUNNING) {
 
                 // 获取执行完成的任务节点(不论成功或失败)
-                Future<NodeExecuteResult> completedFuture = this.executorService.poll(TASK_POLL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                Future<NodeExecutionResult> completedFuture = this.executorService.poll(TASK_POLL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
                 if (completedFuture == null) {
                     // 补交就绪任务
                     if (this.runningFutures.isEmpty() && this.readyQueue.size() > 0) {
@@ -213,7 +213,7 @@ public class FlowExecutor implements AutoCloseable {
                 this.runningFutures.remove(finishedNodeId);
 
                 try {
-                    NodeExecuteResult taskResult = completedFuture.get();
+                    NodeExecutionResult taskResult = completedFuture.get();
                     // 更新节点状态
                     this.runNodes.get(finishedNodeId).setTaskState(taskResult.isSuccess() ? TaskState.SUCCESS : TaskState.FAILED);
 
@@ -221,7 +221,7 @@ public class FlowExecutor implements AutoCloseable {
                         this.completedNodes.add(finishedNodeId);
                         this.completedTasksNum.incrementAndGet();
                         // 在上下文中记录节点输出
-                        context.addNodeExecuteResult(finishedNodeId, taskResult);
+                        context.addNodeExecutionResult(finishedNodeId, taskResult);
 
                         // 触发后续任务
                         Collection<String> allDependents = this.dagGraph.getDownstreamNodes(finishedNodeId);
@@ -275,9 +275,9 @@ public class FlowExecutor implements AutoCloseable {
 
                 } catch (CancellationException e) {
                     LOG.warn(">> WARNING: 任务 <{}> 被取消了.", finishedNodeId);
-                    NodeExecuteResult failedResult = NodeExecuteResult.failed(e).setNodeId(finishedNodeId).setErrorMessage("节点被取消执行");
+                    NodeExecutionResult failedResult = NodeExecutionResult.failed(e).setNodeId(finishedNodeId).setErrorMessage("节点被取消执行");
                     this.runNodes.get(finishedNodeId).setTaskState(TaskState.CANCELLED);
-                    context.addNodeExecuteResult(finishedNodeId, failedResult);
+                    context.addNodeExecutionResult(finishedNodeId, failedResult);
 
                     if (this.failedTasks.add(failedResult)) {
                         try {
@@ -295,7 +295,7 @@ public class FlowExecutor implements AutoCloseable {
                     break;
                 } catch (Exception e) {
                     // 容错与重试
-                    handleTaskFailure(NodeExecuteResult.failed(e).setNodeId(finishedNodeId), context);
+                    handleTaskFailure(NodeExecutionResult.failed(e).setNodeId(finishedNodeId), context);
                 }
 
             } // end-while
@@ -305,7 +305,7 @@ public class FlowExecutor implements AutoCloseable {
                 if (this.executionState == ExecutionState.RUNNING) {
                     if (this.completedTasksNum.get() == this.runNodes.size()) {
                         this.executionState = ExecutionState.COMPLETED;
-                        flowExecuteResult.setSuccess(true);
+                        flowExecutionResult.setSuccess(true);
                     } else {
                         this.executionState = ExecutionState.FAILED;
                     }
@@ -323,15 +323,15 @@ public class FlowExecutor implements AutoCloseable {
         } catch (Exception e) {
             cancelAllRunningTasks();
         } finally {
-            flowExecuteResult.setSucceedNodes(completedNodes);
-            flowExecuteResult.setEndTime(Instant.now());
+            flowExecutionResult.setSucceedNodes(completedNodes);
+            flowExecutionResult.setEndTime(Instant.now());
 
-            for (NodeExecuteResult failedTask : failedTasks) {
-                flowExecuteResult.addFailedNode(failedTask.getNodeId(), failedTask.getErrorMessage());
+            for (NodeExecutionResult failedTask : failedTasks) {
+                flowExecutionResult.addFailedNode(failedTask.getNodeId(), failedTask.getErrorMessage());
             }
 
             try {
-                this.executionListener.onFlowCompleted(flowExecuteResult);
+                this.executionListener.onFlowCompleted(flowExecutionResult);
             } catch (Exception e) {
                 LOG.error(">> ERROR: 回调 `executionListener.onFlowCompleted()` 时发生异常: ", e);
             }
@@ -377,12 +377,12 @@ public class FlowExecutor implements AutoCloseable {
         }
 
         // 提交一个任务，并返回一个 Future ，任务完成后会自动把 Future 放入内部队列
-        Future<NodeExecuteResult> future = this.executorService.submit(() -> {
+        Future<NodeExecutionResult> future = this.executorService.submit(() -> {
             Instant startTime = Instant.now();
             runNode.setTaskState(TaskState.RUNNING);
 
             if (Thread.currentThread().isInterrupted()) {
-                return NodeExecuteResult.failed("任务线程被中断", new InterruptedException("Task interrupted"))
+                return NodeExecutionResult.failed("任务线程被中断", new InterruptedException("Task interrupted"))
                         .setNodeId(nodeId)
                         .setStartTime(startTime)
                         .setEndTime(Instant.now());
@@ -396,9 +396,9 @@ public class FlowExecutor implements AutoCloseable {
                 final String sourceNodeId = gNodeInput.getSourceNodeId();
                 final String sourcePort = gNodeInput.getSourcePort();
                 final String targetPort = gNodeInput.getTargetPort();
-                Optional<NodeExecuteResult> sourceNodeExecuteResult = context.getNodeExecuteResult(sourceNodeId);
+                Optional<NodeExecutionResult> sourceNodeExecuteResult = context.getNodeExecutionResult(sourceNodeId);
                 if (sourceNodeExecuteResult.isPresent()) {
-                    NodeExecuteResult sourceResult = sourceNodeExecuteResult.get();
+                    NodeExecutionResult sourceResult = sourceNodeExecuteResult.get();
                     if (sourceResult != null && sourceResult.isSuccess() && !sourceResult.isSkipped()) {
                         // 上游节点指定端口的输出写入目标节点的指定输入端口，
                         // 这样节点中执行时就可以获取到自己输入端口上的数据了
@@ -416,13 +416,13 @@ public class FlowExecutor implements AutoCloseable {
             }
 
             try {
-                NodeExecuteResult result = runNode.call(context, inputs);
+                NodeExecutionResult result = runNode.call(context, inputs);
                 result.setNodeId(nodeId);
                 result.setStartTime(startTime);
                 result.setEndTime(Instant.now());
                 return result;
             } catch (Exception e) {
-                return NodeExecuteResult.failed(e)
+                return NodeExecutionResult.failed(e)
                             .setNodeId(nodeId)
                             .setStartTime(startTime)
                             .setEndTime(Instant.now());
@@ -436,7 +436,7 @@ public class FlowExecutor implements AutoCloseable {
     /**
      * 处理任务失败：重试或永久失败
      */
-    private void handleTaskFailure(NodeExecuteResult failedResult, ExecutionContext context) {
+    private void handleTaskFailure(NodeExecutionResult failedResult, ExecutionContext context) {
         if (this.failedTasks.contains(failedResult)) {
             return;
         }
@@ -508,11 +508,11 @@ public class FlowExecutor implements AutoCloseable {
             if (this.skippedNodes.add(skipNodeId)) {
                 // 更新节点状态
                 this.runNodes.get(skipNodeId).setTaskState(TaskState.SKIPPED);
-                NodeExecuteResult result = NodeExecuteResult.failed("节点被跳过")
+                NodeExecutionResult result = NodeExecutionResult.failed("节点被跳过")
                         .setNodeId(skipNodeId)
                         .setSkipped(true);
                 // 上下文记录节点执行结果
-                context.addNodeExecuteResult(skipNodeId, result);
+                context.addNodeExecutionResult(skipNodeId, result);
 
                 try {
                     this.executionListener.onNodeCompleted(result);
@@ -544,10 +544,10 @@ public class FlowExecutor implements AutoCloseable {
             }
 
             if (this.runningFutures.size() > 0) {
-                for (Map.Entry<String, Future<NodeExecuteResult>> en : this.runningFutures.entrySet()) {
+                for (Map.Entry<String, Future<NodeExecutionResult>> en : this.runningFutures.entrySet()) {
                     // 更新节点状态
                     this.runNodes.get(en.getKey()).setTaskState(TaskState.CANCELLED);
-                    Future<NodeExecuteResult> f = en.getValue();
+                    Future<NodeExecutionResult> f = en.getValue();
                     if (!f.isDone() && !f.isCancelled()) {
                         try {
                             f.cancel(true);
@@ -605,12 +605,12 @@ public class FlowExecutor implements AutoCloseable {
         }
 
         @Override
-        public void onNodeCompleted(NodeExecuteResult nodeExecuteResult) {
+        public void onNodeCompleted(NodeExecutionResult nodeExecutionResult) {
             // nothing
         }
 
         @Override
-        public void onFlowCompleted(FlowExecuteResult executionResult) {
+        public void onFlowCompleted(FlowExecutionResult executionResult) {
             // nothing
         }
     }
