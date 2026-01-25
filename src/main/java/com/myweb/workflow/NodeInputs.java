@@ -47,7 +47,8 @@ public class NodeInputs {
             return null;
         }
         // 默认取第一个，因为大部分场景是 1对1 传递
-        return outputs.get(0).getPayload(type);
+        NodeOutput nodeOutput = outputs.get(0);
+        return nodeOutput != null ? nodeOutput.getPayload(type) : null;
     }
 
     /**
