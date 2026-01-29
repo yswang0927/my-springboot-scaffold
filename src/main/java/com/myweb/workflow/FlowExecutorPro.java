@@ -103,11 +103,11 @@ public class FlowExecutorPro implements AutoCloseable {
             );
         }
 
-        this.initializeNodes();
-
         this.executionListener = listener != null ? listener : new DefaultExecutionListener();
         this.executorService = new ExecutorCompletionService<>(executor != null ? executor : this.threadPoolExecutor);
         this.retryExecutorService = Executors.newSingleThreadScheduledExecutor();
+
+        this.initializeNodes();
     }
 
     private void initializeNodes() {
@@ -180,6 +180,7 @@ public class FlowExecutorPro implements AutoCloseable {
 
         // 1. 初始化就绪队列
         initializeReadyQueue();
+
         // 2. 提交第一批任务
         submitReadyTasks(context);
 
@@ -316,6 +317,7 @@ public class FlowExecutorPro implements AutoCloseable {
         failedNode.setTaskState(TaskState.FAILED);
         this.failedTasks.add(failedResult);
         this.completedTasksNum.incrementAndGet(); // 计数+1
+
         context.addNodeExecutionResult(failedNodeId, failedResult);
         notifyNodeCompletion(failedResult);
 
@@ -334,10 +336,10 @@ public class FlowExecutorPro implements AutoCloseable {
                 .setSkipped(true)
                 .setErrorMessage(ex.getMessage());
 
-        context.addNodeExecutionResult(nodeId, result);
         this.completedTasksNum.incrementAndGet(); // 计数+1
         this.completedNodes.add(nodeId);
 
+        context.addNodeExecutionResult(nodeId, result);
         notifyNodeCompletion(result);
 
         // 【关键】：跳过也被视为一种完成，必须评估下游
@@ -378,6 +380,7 @@ public class FlowExecutorPro implements AutoCloseable {
         this.runNodes.get(nodeId).setTaskState(TaskState.CANCELLED);
         this.completedTasksNum.incrementAndGet();
         this.failedTasks.add(res);
+
         context.addNodeExecutionResult(nodeId, res);
         notifyNodeCompletion(res);
 
@@ -487,9 +490,10 @@ public class FlowExecutorPro implements AutoCloseable {
                     .setNodeId(nodeId)
                     .setSkipped(finalState == TaskState.SKIPPED); // UPSTREAM_FAILED 也可以视作 Skipped 的一种变体，视业务定义
 
-            context.addNodeExecutionResult(nodeId, result);
             this.completedTasksNum.incrementAndGet();
             this.completedNodes.add(nodeId);
+
+            context.addNodeExecutionResult(nodeId, result);
             notifyNodeCompletion(result);
 
             // 递归：这个节点现在的状态变了，需要通知它的下游
@@ -511,6 +515,7 @@ public class FlowExecutorPro implements AutoCloseable {
 
             this.completedNodes.add(nodeId);
             this.completedTasksNum.incrementAndGet();
+
             context.addNodeExecutionResult(nodeId, result);
             notifyNodeCompletion(result);
 
