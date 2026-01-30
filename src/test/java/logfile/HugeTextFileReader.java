@@ -571,8 +571,8 @@ public class HugeTextFileReader implements AutoCloseable {
     }
 
     /**
-     * [Optimization] 使用 Raw IO 查找行首，避开复杂的 Cache 和 String 解码。
-     * 寻找换行符时，其实不需要做 UTF-8 解码检查。
+     * [Optimization] 使用 Raw IO 查找行首，避开复杂的 readStringBytes 解码。
+     * 寻找换行符时，其实不需要做 UTF-8 解码检查，
      * ASCII 的 \n (0x0A) 在 UTF-8 的多字节序列中是不可能出现的（UTF-8 多字节的字节范围是 0x80-0xFF）。
      */
     private long findStartOfLine(long startPos) throws IOException {
