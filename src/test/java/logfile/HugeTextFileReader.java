@@ -715,26 +715,18 @@ public class HugeTextFileReader implements AutoCloseable {
         Start, End
     }
 
-    static class FileRelativePosition {
+    static class FileBlockPosition {
         final FileAnchor anchor;
         final long position;
 
-        public FileRelativePosition(FileAnchor anchor, long position) {
+        public FileBlockPosition(FileAnchor anchor, long position) {
             this.anchor = anchor;
             this.position = position;
         }
 
-        public FileAnchor getAnchor() {
-            return anchor;
-        }
-
-        public long getPosition() {
-            return position;
-        }
-
         @Override
         public boolean equals(Object o) {
-            if (!(o instanceof FileRelativePosition that)) {
+            if (!(o instanceof FileBlockPosition that)) {
                 return false;
             }
             return position == that.position && anchor == that.anchor;
@@ -743,12 +735,6 @@ public class HugeTextFileReader implements AutoCloseable {
         @Override
         public int hashCode() {
             return Objects.hash(anchor, position);
-        }
-    }
-
-    static class FileBlockPosition extends FileRelativePosition {
-        public FileBlockPosition(FileAnchor anchor, long position) {
-            super(anchor, position);
         }
     }
 
