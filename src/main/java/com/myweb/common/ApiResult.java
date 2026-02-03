@@ -2,6 +2,8 @@ package com.myweb.common;
 
 import java.io.Serializable;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 public class ApiResult<T> implements Serializable {
     private int code = 0;
     private String message = "success";
@@ -57,4 +59,10 @@ public class ApiResult<T> implements Serializable {
     public long getTs() {
         return ts;
     }
+
+    @JsonIgnore
+    public boolean isErrorResult() {
+        return this.code != 0;
+    }
+
 }

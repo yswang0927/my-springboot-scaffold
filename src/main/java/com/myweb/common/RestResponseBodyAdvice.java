@@ -2,6 +2,7 @@ package com.myweb.common;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.core.MethodParameter;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.server.ServerHttpRequest;
@@ -44,7 +45,13 @@ public class RestResponseBodyAdvice implements ResponseBodyAdvice<Object> {
             }
         }
 
-        if (body instanceof ApiResult) {
+        if (body instanceof ApiResult apiResult) {
+            if (apiResult.isErrorResult()) {
+                final int errorCode = apiResult.getCode();
+                if (errorCode >= 100 && errorCode <= 999) {
+                    response.setStatusCode(HttpStatusCode.valueOf(errorCode));
+                }
+            }
             return body;
         }
 
