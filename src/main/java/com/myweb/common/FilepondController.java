@@ -41,7 +41,7 @@ import com.myweb.exception.FileUploadException;
 @IgnoreRestBody
 public class FilepondController implements InitializingBean {
 
-    @Value("${spring.servlet.multipart.location}")
+    @Value("${spring.servlet.multipart.location:./uploads}")
     private String uploadDir = System.getProperty("user.dir") + File.separator + "uploads";
 
     @Value("${spring.servlet.multipart.max-file-size:100MB}")
@@ -67,8 +67,12 @@ public class FilepondController implements InitializingBean {
     public ResponseEntity<String> startUpload(HttpServletRequest request) {
         String uploadName = request.getHeader("Upload-Name");
         String uploadLength = request.getHeader("Upload-Length");
+        // [新增] 获取相对路径 Header
+        String uploadPath = request.getHeader("Upload-Path");
 
         String fileName = "unknown_file_" + System.currentTimeMillis();
+        String relativePath = ""; // 默认为空，即存放在根目录
+
         if (StringUtils.hasText(uploadName)) {
             try {
                 // 前端使用 encodeURIComponent() 编码了文件名防止中文乱码
@@ -76,6 +80,14 @@ public class FilepondController implements InitializingBean {
             } catch (IllegalArgumentException e) {
                 // 如果解码失败，回退到原始值或默认值
                 fileName = uploadName;
+            }
+        }
+
+        if (StringUtils.hasText(uploadPath)) {
+            try {
+                relativePath = URLDecoder.decode(uploadPath, StandardCharsets.UTF_8);
+            } catch (IllegalArgumentException e) {
+                relativePath = uploadPath;
             }
         }
 
@@ -87,7 +99,7 @@ public class FilepondController implements InitializingBean {
         }
 
         try {
-            return ResponseEntity.ok(this.filepondUploader.startUpload(fileName, fileSize));
+            return ResponseEntity.ok(this.filepondUploader.startUpload(fileName, fileSize, relativePath));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
@@ -103,7 +115,7 @@ public class FilepondController implements InitializingBean {
      * </pre>
      * FilePond 会分块发送文件，直到所有数据块都成功上传为止。
      */
-    @PatchMapping
+    @PatchMapping("/process")
     @IgnoreRestBody
     public ResponseEntity<Void> uploading(HttpServletRequest request) {
         String fileId = request.getParameter("patch");
@@ -144,7 +156,7 @@ public class FilepondController implements InitializingBean {
      * 并期望在 Upload-Offset 响应头中获得下一个预期数据块的文件偏移量。
      * 服务器响应 Upload-Offset 将其设置为下一个预期的数据块偏移量（以字节为单位）。
      */
-    @RequestMapping(method=RequestMethod.HEAD)
+    @RequestMapping(path="/process", method=RequestMethod.HEAD)
     @IgnoreRestBody
     public ResponseEntity<Void> checkUpload(HttpServletRequest request) {
         String fileId = request.getParameter("patch");

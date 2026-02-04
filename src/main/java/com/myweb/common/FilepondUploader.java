@@ -6,7 +6,6 @@ import java.io.InputStream;
 import java.io.RandomAccessFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
@@ -60,8 +59,9 @@ public class FilepondUploader {
      * 初始化上传，生成唯一ID。
      * @param fileName 文件名
      * @param fileSize 文件大小，用于磁盘占位
+     * @param relativePath 文件相对路径(主要用于上传整个目录)
      */
-    public String startUpload(String fileName, long fileSize) throws FileUploadException {
+    public String startUpload(String fileName, long fileSize, String relativePath) throws FileUploadException {
         if (this.maxFileSizeBytes > 0 && fileSize > this.maxFileSizeBytes) {
             throw new FileUploadException("File size exceeds limit: " + this.maxFileSizeBytes);
         }
@@ -75,7 +75,7 @@ public class FilepondUploader {
             throw new FileUploadException(">> ERROR: Failed to allocate disk space for uploading-file: " + fileName);
         }
 
-        this.uploadTasksMap.put(fileId, new UploadTask(fileName, fileSize));
+        this.uploadTasksMap.put(fileId, new UploadTask(StringUtils.hasText(fileName) ? fileName : fileId, fileSize, relativePath));
         return fileId;
     }
 
@@ -86,10 +86,14 @@ public class FilepondUploader {
      * @param body 分片二进制数据
      * @param totalLength 文件总大小
      */
-    public void saveChunk(String fileId, long offset, InputStream body, long totalLength) throws FileUploadException {
+    public void saveChunk(final String fileId, final long offset, final InputStream body, final long totalLength) throws FileUploadException {
         UploadTask uploadTask = this.uploadTasksMap.get(fileId);
         if (uploadTask == null) {
             throw new FileUploadException("Upload session expired or invalid ID: "+ fileId);
+        }
+
+        if (offset < 0 || offset >= totalLength || totalLength < 0) {
+            throw new FileUploadException(String.format("Invalid offset/total-length: (offset=%d, totalLength=%d)", offset, totalLength));
         }
 
         uploadTask.touch();
@@ -124,22 +128,31 @@ public class FilepondUploader {
 
         // 记录本次成功上传的区间 [start, end)
         final long contiguousLength = uploadTask.addChunkRange(offset, offset + bytesWrittenInThisChunk);
+
         // 检查是否全部完成，判断标准：从0开始的连续长度 == 文件总长度
         if (contiguousLength >= Math.max(totalLength, uploadTask.totalLength)) {
             synchronized (uploadTask) {
                 // 双重检查：确保只有一个线程进行文件重命名
                 if (Files.exists(tempFilePath)) {
-                    String fileName = uploadTask.fileName;
-                    if (!StringUtils.hasText(fileName)) {
-                        fileName = fileId;
-                    }
-                    // 安全性处理：只保留文件名，防止路径遍历攻击 (../../)
-                    String safeFileName = Paths.get(fileName).getFileName().toString();
+                    String targetFileName = uploadTask.fileName;
                     try {
-                        Files.move(tempFilePath, this.uploadDir.resolve(safeFileName), StandardCopyOption.REPLACE_EXISTING);
+                        // 1. [安全防御] 防止路径遍历 (重要！例如 ../../etc/passwd)
+                        Path targetFilePath = resolveTargetFilePath(targetFileName, uploadTask.relativePath);
+                        if (!targetFilePath.startsWith(this.uploadDir)) {
+                            throw new FileUploadException("Invalid upload path traversal attempt: " + uploadTask.relativePath);
+                        }
+
+                        // 2. 自动创建父目录
+                        if (targetFilePath.getParent() != null) {
+                            if (!Files.exists(targetFilePath.getParent())) {
+                                Files.createDirectories(targetFilePath.getParent());
+                            }
+                        }
+
+                        Files.move(tempFilePath, targetFilePath, StandardCopyOption.REPLACE_EXISTING);
                     } catch (IOException e) {
                         LOG.error(">> ERROR: Failed to rename uploaded temp-file<{}> to <{}>, caused by: {}",
-                                tempFilePath.getFileName().toString(), fileName, e.getMessage());
+                                fileId, targetFileName, e.getMessage());
                     }
                 }
             }
@@ -171,15 +184,34 @@ public class FilepondUploader {
             Files.deleteIfExists(tempFilePath);
 
             if (StringUtils.hasText(task.fileName)) {
-                // [安全修复] 需要防止路径遍历
-                String safeFileName = Paths.get(task.fileName).getFileName().toString();
-                Path filePath = this.uploadDir.resolve(safeFileName);
-                Files.deleteIfExists(filePath);
+                Path targetFilePath = resolveTargetFilePath(task.fileName, task.relativePath);
+                // 安全删除
+                if (targetFilePath.startsWith(this.uploadDir)) {
+                    Files.deleteIfExists(targetFilePath);
+                }
             }
 
         } catch (IOException e) {
             LOG.error(">> ERROR: Revert uploaded file<{}> failed: {}", fileId, e.getMessage());
         }
+    }
+
+    private Path resolveTargetFilePath(String fileName, String relativePath) {
+        // 处理如果上传的是目录
+        Path finalFilePath;
+        if (StringUtils.hasText(relativePath)) {
+            if (relativePath.endsWith(fileName)) {
+                finalFilePath = this.uploadDir.resolve(relativePath);
+            } else {
+                finalFilePath = this.uploadDir.resolve(relativePath).resolve(fileName);
+            }
+        } else {
+            // 没有相对路径，直接存放在根目录
+            finalFilePath = this.uploadDir.resolve(fileName);
+        }
+
+        // [安全修复] 需要防止路径遍历
+        return finalFilePath.normalize();
     }
 
     /**
@@ -242,14 +274,17 @@ public class FilepondUploader {
     private static class UploadTask {
         final String fileName;
         final long totalLength;
+        final String relativePath;
+
         // 最后活跃时间，用于定时清理
         volatile long lastActiveTime = System.currentTimeMillis();
         // 用于维护已上传的区间列表，例如: [[0, 100], [200, 300]]
         private final List<Range> uploadedChunkRanges = new ArrayList<>();
 
-        UploadTask(String fileName, long totalLength) {
+        UploadTask(String fileName, long totalLength, String relativePath) {
             this.fileName = fileName;
             this.totalLength = totalLength;
+            this.relativePath = relativePath != null ? relativePath : "";
         }
 
         void touch() {
