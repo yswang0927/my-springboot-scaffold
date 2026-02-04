@@ -10,10 +10,12 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 /**
  * 超大文本文件读取器。
  * 特性：
+ * <pre>
  * 1. 分块缓存 (Block Cache)
  * 2. UTF-8 边界自动修复
  * 3. 线程安全的缓存加载
  * 4. 高性能换行符查找
+ * </pre>
  */
 public class HugeTextFileReader implements AutoCloseable {
 
