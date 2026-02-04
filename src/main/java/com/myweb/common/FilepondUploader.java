@@ -60,6 +60,15 @@ public class FilepondUploader {
      * 初始化上传，生成唯一ID。
      * @param fileName 文件名
      * @param fileSize 文件大小，用于磁盘占位
+     */
+    public String startUpload(String fileName, long fileSize) throws FileUploadException {
+        return this.startUpload(fileName, fileSize, "");
+    }
+
+    /**
+     * 初始化上传，生成唯一ID。
+     * @param fileName 文件名
+     * @param fileSize 文件大小，用于磁盘占位
      * @param relativePath 文件相对路径(主要用于上传整个目录)
      */
     public String startUpload(String fileName, long fileSize, String relativePath) throws FileUploadException {

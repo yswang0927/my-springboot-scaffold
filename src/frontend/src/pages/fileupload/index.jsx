@@ -12,30 +12,48 @@ registerPlugin(FilePondPluginFileValidateType, FilePondPluginFileValidateSize);
 export default function FileUploadPage() {
     const [files, setFiles] = useState([]);
 
-    const CHUNK_SIZE = 1024 * 1024; // 1MB
+    const ALLOWED_FILE_TYPE = null; //['image/*', 'application/pdf']
+    const MAX_FILE_SIZE = "2000MB";
+    const MAX_TOTAL_FILE_SIZE = "20000MB";
+    const MAX_FILES = 10;
+    const MAX_PARALLEL_UPLOADS = 5;
+    const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
+    const CHUNK_FORCE = false;
+
     const server = {
-        url: 'http://127.0.0.1:9090',
+        url: 'http://127.0.0.1:9090/api/filepond-upload',
         process: {
-            url: '/api/filepond-upload',
+            url: '/process',
             method: 'POST',
             withCredentials: false,
-            headers: {},
-            timeout: 7000,
-            onload: (resp) => {
-                console.log('>>>> 上传第一阶段响应:', resp);
-                return resp.data;
+            headers: (file) => {
+                console.log('>>>> 上传第一阶段请求头:', file);
+                return {
+                    'Upload-Name': encodeURIComponent(file.name),
+                    'Upload-Length': file.size,
+                    'Upload-Path': encodeURIComponent(file.webkitRelativePath || '') // 支持上传目录
+                };
             },
-            onerror: (resp) => {
-                console.error('上传出错:', resp);
+            timeout: 7000,
+            onload: (xhr) => {
+                // 当收到服务器响应时调用，可用于从服务器响应中获取唯一的文件 ID
+                return xhr.responseText;
+            },
+            onerror: (xhr) => {
+                // 当收到服务器错误时调用，接收响应正文，用于选择相关的错误数据。
+                console.error('上传出错:', xhr);
             },
             ondata: (formData) => {
-                // 可以在这里添加额外的数据到 formData
+                // 在表单数据对象即将发送之前调用此方法，返回扩展后的表单数据对象以进行更改。
+                // formData.append('Hello', 'World');
                 return formData;
             }
         },
-        fetch: null,
-        revert: null,
-        
+        patch: '/process?patch=',
+        revert: '/revert',
+        fetch: '/fetch',
+        restore: null,
+        load: null,
     };
 
     return (
@@ -45,18 +63,19 @@ export default function FileUploadPage() {
                 files={files}
                 name="file"
                 onupdatefiles={setFiles}
+                allowDirectoriesOnly={false}
                 allowMultiple={true}
                 instantUpload={false}
                 allowFileSizeValidation={true}
-                maxFiles={3}
-                maxFileSize={'100MB'}
-                maxTotalFileSize={'300MB'}
-                maxParallelUploads={2}
+                maxFiles={MAX_FILES}
+                maxFileSize={MAX_FILE_SIZE}
+                maxTotalFileSize={MAX_TOTAL_FILE_SIZE}
+                maxParallelUploads={MAX_PARALLEL_UPLOADS}
                 server={server}
                 allowFileTypeValidation={true}
-                //acceptedFileTypes={['image/*', 'application/pdf']}
+                acceptedFileTypes={ALLOWED_FILE_TYPE}
                 chunkUploads={true}
-                chunkForce={true}
+                chunkForce={CHUNK_FORCE}
                 chunkSize={CHUNK_SIZE}
                 credits={['', '']}
                 {...zh_cn}

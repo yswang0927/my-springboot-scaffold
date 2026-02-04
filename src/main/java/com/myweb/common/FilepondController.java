@@ -58,44 +58,64 @@ public class FilepondController implements InitializingBean {
      */
     @IgnoreRestBody
     @PostMapping("/process")
-    public ResponseEntity<String> startUpload(HttpServletRequest request) {
-        String uploadName = request.getHeader("Upload-Name");
-        String uploadLength = request.getHeader("Upload-Length");
-        // [新增] 获取相对路径 Header
-        String uploadPath = request.getHeader("Upload-Path");
+    public ResponseEntity<String> startUpload(HttpServletRequest request,
+                                              @RequestParam(value = "file", required = false) MultipartFile singleFile) {
+        // 支持小文件不需要分块上传
+        if (singleFile != null) {
+            String fileName = singleFile.getOriginalFilename();
+            long fileSize = singleFile.getSize();
 
-        String fileName = "unknown_file_" + System.currentTimeMillis();
-        String relativePath = ""; // 默认为空，即存放在根目录
-
-        if (StringUtils.hasText(uploadName)) {
-            try {
-                // 前端使用 encodeURIComponent() 编码了文件名防止中文乱码
-                fileName = URLDecoder.decode(uploadName, StandardCharsets.UTF_8);
-            } catch (IllegalArgumentException e) {
-                // 如果解码失败，回退到原始值或默认值
-                fileName = uploadName;
+            // 1. 调用 startUpload 初始化任务
+            String fileId = this.filepondUploader.startUpload(fileName, fileSize, "");
+            // 2. 直接将整个文件作为第一个（也是唯一一个）分片写入
+            try (InputStream in = singleFile.getInputStream()) {
+                this.filepondUploader.saveChunk(fileId, 0, in, fileSize);
+                return ResponseEntity.ok(fileId);
+            } catch (Exception e) {
+                return ResponseEntity.badRequest().body(e.getMessage());
             }
-        }
 
-        if (StringUtils.hasText(uploadPath)) {
-            try {
-                relativePath = URLDecoder.decode(uploadPath, StandardCharsets.UTF_8);
-            } catch (IllegalArgumentException e) {
-                relativePath = uploadPath;
+        }
+        // 大文件需要分块上传
+        else {
+            String uploadName = request.getHeader("Upload-Name");
+            String uploadLength = request.getHeader("Upload-Length");
+            // [新增] 获取相对路径 Header
+            String uploadPath = request.getHeader("Upload-Path");
+
+            String fileName = "unknown_file_" + System.currentTimeMillis();
+            String relativePath = ""; // 默认为空，即存放在根目录
+
+            if (StringUtils.hasText(uploadName)) {
+                try {
+                    // 前端使用 encodeURIComponent() 编码了文件名防止中文乱码
+                    fileName = URLDecoder.decode(uploadName, StandardCharsets.UTF_8);
+                } catch (IllegalArgumentException e) {
+                    // 如果解码失败，回退到原始值或默认值
+                    fileName = uploadName;
+                }
             }
-        }
 
-        long fileSize = 0;
-        try {
-            fileSize = Long.parseLong(uploadLength);
-        } catch (NumberFormatException e) {
-            // ignore
-        }
+            if (StringUtils.hasText(uploadPath)) {
+                try {
+                    relativePath = URLDecoder.decode(uploadPath, StandardCharsets.UTF_8);
+                } catch (IllegalArgumentException e) {
+                    relativePath = uploadPath;
+                }
+            }
 
-        try {
-            return ResponseEntity.ok(this.filepondUploader.startUpload(fileName, fileSize, relativePath));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            long fileSize = 0;
+            try {
+                fileSize = Long.parseLong(uploadLength);
+            } catch (NumberFormatException e) {
+                // ignore
+            }
+
+            try {
+                return ResponseEntity.ok(this.filepondUploader.startUpload(fileName, fileSize, relativePath));
+            } catch (Exception e) {
+                return ResponseEntity.badRequest().body(e.getMessage());
+            }
         }
     }
 
