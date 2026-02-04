@@ -1,18 +1,16 @@
-import { useState, useRef, useEffect } from "react"
+import { useState } from "react"
 
-import * as FilePond from 'filepond';
+import { FilePond, registerPlugin } from "react-filepond";
 import FilePondPluginFileValidateType from "filepond-plugin-file-validate-type";
 import FilePondPluginFileValidateSize from 'filepond-plugin-file-validate-size';
 
 import zh_cn from "filepond/locale/zh-cn.js";
 import "filepond/dist/filepond.min.css";
 
-FilePond.registerPlugin(FilePondPluginFileValidateType, FilePondPluginFileValidateSize);
+registerPlugin(FilePondPluginFileValidateType, FilePondPluginFileValidateSize);
 
 export default function FileUploadPage() {
     const [files, setFiles] = useState([]);
-    const fileInputRef = useRef(null);
-    const pondRef = useRef(null);
 
     const ALLOWED_FILE_TYPE = null; //['image/*', 'application/pdf']
     const MAX_FILE_SIZE = "2000MB";
@@ -22,7 +20,7 @@ export default function FileUploadPage() {
     const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
     const CHUNK_FORCE = false;
 
-    const serverOptions = {
+    const server = {
         url: 'http://127.0.0.1:9090/api/filepond-upload',
         process: {
             url: '/process',
@@ -66,55 +64,30 @@ export default function FileUploadPage() {
         load: null,
     };
 
-    useEffect(() => {
-        if (pondRef.current || !fileInputRef.current) {
-            return;
-        }
-
-        const initPond = () => {
-            if (!fileInputRef.current) {
-                return;
-            }
-
-            pondRef.current = FilePond.create(fileInputRef.current, {
-                name: 'file',
-                server: serverOptions,
-                allowMultiple: true,
-                instantUpload: true, // 是否选择文件后立即上传
-                allowFileSizeValidation: true,
-                allowFileTypeValidation: ALLOWED_FILE_TYPE !== null,
-                allowMinimumUploadDuration: true,
-                acceptedFileTypes: ALLOWED_FILE_TYPE,
-                maxFiles: MAX_FILES,
-                maxFileSize: MAX_FILE_SIZE,
-                maxTotalFileSize: MAX_TOTAL_FILE_SIZE,
-                maxParallelUploads: MAX_PARALLEL_UPLOADS,
-                chunkUploads: true,
-                chunkForce: CHUNK_FORCE,
-                chunkSize: CHUNK_SIZE,
-                credits: ['', ''],
-                ...zh_cn
-            });
-        };
-
-        // 使用 requestAnimationFrame 确保在下一次重绘前执行，此时 DOM 最为稳定
-        const rafId = requestAnimationFrame(initPond);
-
-        return () => {
-            cancelAnimationFrame(rafId);
-            if (pondRef.current) {
-                pondRef.current.destroy();
-                pondRef.current = null;
-            }
-        };
-    }, []);
-
     return (
         <div style={{width:'400px', margin:'0 auto', paddingTop:'50px'}}>
             <div>使用 Filepond 组件上传文件</div>
-            <div>
-                <input type="file" ref={fileInputRef} />
-            </div>
+            <FilePond
+                files={files}
+                name="file"
+                onupdatefiles={setFiles}
+                allowDirectoriesOnly={false}
+                allowMultiple={true}
+                instantUpload={false}
+                allowFileSizeValidation={true}
+                maxFiles={MAX_FILES}
+                maxFileSize={MAX_FILE_SIZE}
+                maxTotalFileSize={MAX_TOTAL_FILE_SIZE}
+                maxParallelUploads={MAX_PARALLEL_UPLOADS}
+                server={server}
+                allowFileTypeValidation={true}
+                acceptedFileTypes={ALLOWED_FILE_TYPE}
+                chunkUploads={true}
+                chunkForce={CHUNK_FORCE}
+                chunkSize={CHUNK_SIZE}
+                credits={['', '']}
+                {...zh_cn}
+            />
         </div>
     )
 }
