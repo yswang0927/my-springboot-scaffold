@@ -7,7 +7,7 @@ import java.lang.annotation.*;
  */
 @Documented
 @Inherited
-@Target({ElementType.METHOD, ElementType.ANNOTATION_TYPE})
+@Target({ElementType.TYPE, ElementType.METHOD, ElementType.ANNOTATION_TYPE})
 @Retention(RetentionPolicy.RUNTIME)
 public @interface IgnoreRestBody {
 }
