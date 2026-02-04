@@ -118,7 +118,7 @@ public class FilepondUploader {
             if (body != null) {
                 try {
                     body.close();
-                } catch (IOException ignored) {}
+                } catch (Exception ignored) {}
             }
         }
 
@@ -148,7 +148,7 @@ public class FilepondUploader {
     }
 
     /**
-     * 获取当前已上传的大小（用于断点续传）
+     * 获取下一个分片上传的偏移量(用于断点续传)
      */
     public long getNextUploadOffset(String fileId) {
         UploadTask task = this.uploadTasksMap.get(fileId);
@@ -236,9 +236,9 @@ public class FilepondUploader {
         }
     }
 
-    // ---------------------------------------------------------
+    // ---------------------------------
     // 内部类：聚合单个上传任务的所有状态
-    // ---------------------------------------------------------
+    // ---------------------------------
     private static class UploadTask {
         final String fileName;
         final long totalLength;
@@ -266,8 +266,6 @@ public class FilepondUploader {
             // 2. 排序 (按起始位置)
             this.uploadedChunkRanges.sort((r1, r2) -> Long.compare(r1.start, r2.start));
 
-            System.out.println(">> s: "+ this.uploadedChunkRanges);
-
             // 3. 合并逻辑
             List<Range> merged = new ArrayList<>();
             Range current = this.uploadedChunkRanges.get(0);
@@ -288,8 +286,6 @@ public class FilepondUploader {
             // 更新
             this.uploadedChunkRanges.clear();
             this.uploadedChunkRanges.addAll(merged);
-
-            System.out.println(">> e: "+ this.uploadedChunkRanges);
 
             // 4. 计算从 0 开始的连续长度
             return getContiguousLength();
@@ -325,7 +321,7 @@ public class FilepondUploader {
 
         @Override
         public String toString() {
-            return "["+ start +", "+ end +")";
+            return String.format("[%d, %d)", start, end);
         }
     }
 
