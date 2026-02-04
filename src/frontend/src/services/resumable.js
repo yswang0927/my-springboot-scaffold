@@ -40,7 +40,7 @@ const Resumable = window.Resumable = function (opts) {
         maxChunkRetries: 3,
         chunkRetryInterval: 300,
         maxFiles: undefined,
-        pasteUpload: false, // jack: 是否开启支持粘贴剪切板上传文件
+        pasteUpload: true, // jack: 是否开启支持粘贴剪切板上传文件
         directoryUpload: false, // jack: 支持上传文件夹(即：上传这个文件夹里的所有文件)
         resumableUpload: false, // jack: 是否开启断点续传，它需要服务器端配合支持，开启后，前端会进行文件的MD5计算，对于大文件MD5计算过程会比较慢
         fileParameterName: 'file',
@@ -1543,7 +1543,7 @@ Resumable.prototype.initUI = function(container) {
         var uiStyle = document.createElement('style');
         uiStyle.id = '_resumable_ui_style_';
         uiStyle.type = 'text/css';
-        uiStyle.textContent = '.resum-drop {padding:20px;border:2px dashed #C5CBD3;color:#383E47;background-color:#E5E8EB;border-radius:5px;}' +
+        uiStyle.textContent = '.resum-drop {padding:20px;border:1px dashed #C5CBD3;color:#383E47;background-color:#E5E8EB;border-radius:5px;font-family:"Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";}' +
             '.resum-dragover {background-color:#F6F7F9;}'+
             '.resum-subtext{color:#738091;font-size:0.9em;}'+
             '.resum-browser {color:#2D72D2;} .resum-browser:hover {text-decoration:underline;}'+
@@ -1570,7 +1570,7 @@ Resumable.prototype.initUI = function(container) {
         container.innerHTML = '<div style="position:relative; height:100%;">' +
             '<div data-ref="dropper" class="resum-drop" tabindex="-1">' +
             '<div style="text-align:center;margin-bottom:10px;pointer-events:none;"><svg width="48" height="48" viewBox="0 0 20 20" class="resum-icon"><path fill="#8F99A8" d="M10.71 10.29c-.18-.18-.43-.29-.71-.29s-.53.11-.71.29l-3 3a1.003 1.003 0 001.42 1.42L9 13.41V19c0 .55.45 1 1 1s1-.45 1-1v-5.59l1.29 1.29c.18.19.43.3.71.3a1.003 1.003 0 00.71-1.71l-3-3zM15 4c-.12 0-.24.03-.36.04C13.83 1.69 11.62 0 9 0 5.69 0 3 2.69 3 6c0 .05.01.09.01.14A3.98 3.98 0 000 10c0 2.21 1.79 4 4 4 0-.83.34-1.58.88-2.12l3-3a2.993 2.993 0 014.24 0l3 3-.01.01c.52.52.85 1.23.87 2.02C18.28 13.44 20 11.42 20 9c0-2.76-2.24-5-5-5z" fill-rule="evenodd"></path></svg></div>' +
-            '<div style="text-align:center;font-weight:700;line-height:2.0;font-size:1em;margin-bottom:10px;">拖拽文件到这里，或 <div data-ref="browser" class="resum-browser" style="display:inline-block;cursor:pointer;">选择文件</div></div>' +
+            '<div style="text-align:center;font-weight:400;line-height:2.0;font-size:1em;margin-bottom:10px;">拖放文件到这里，或 <div data-ref="browser" class="resum-browser" style="display:inline-block;cursor:pointer;">选择文件</div></div>' +
             (r.getOpt('fileTypes') && r.getOpt('fileTypes').length > 0 ? ('<div style="text-align:center;line-height:1.5;pointer-events:none;" class="resum-subtext resum-filetypes">支持文件类型：' + r.getOpt('fileTypes').join(', ') + '</div>') : '') +
             (r.getOpt('maxFileSize') && r.getOpt('maxFileSize') > 0 ? ('<div style="text-align:center;line-height:1.5;pointer-events:none;" class="resum-subtext resum-max-filesize">单文件最大：' + r.utils.formatSize(r.getOpt('maxFileSize')) + '</div>') : '') +
             '<div data-ref="filesList" class="resum-files-list"></div>' +
@@ -2171,3 +2171,6 @@ Resumable.MD5_HASHER =
     '  else if ("end" === status){ if(dataBuffer) { md5Hasher.append(dataBuffer); } var md5=md5Hasher.end(); md5Hasher.reset(); self.postMessage({"md5":md5, "status":"end"}); }'+
     ' }catch(e){ self.postMessage({"status":"error", "error":e.message}); }'+
     '});';
+
+
+export default Resumable;

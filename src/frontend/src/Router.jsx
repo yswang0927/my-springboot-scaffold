@@ -8,6 +8,7 @@ const Login = lazy(() => import('./pages/login'));
 const Settings = lazy(() => import('./pages/setting'));
 const MsgpackPage = lazy(() => import('./pages/msgpack'));
 const FileUploadPage = lazy(() => import('./pages/fileupload'));
+const ResumableUploadPage = lazy(() => import('./pages/fileupload/resumable'));
 
 export default function Router() {
     return (
@@ -19,6 +20,7 @@ export default function Router() {
                     <Route path="/settings" element={<Settings />} />
                     <Route path="/msgpack" element={<MsgpackPage />} />
                     <Route path="/fileupload" element={<FileUploadPage />} />
+                    <Route path="/resumableupload" element={<ResumableUploadPage />} />
                 </Route>
             </Routes>
         </Suspense>
