@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Stream;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -187,7 +188,11 @@ public class FilepondUploader {
                 Path targetFilePath = resolveTargetFilePath(task.fileName, task.relativePath);
                 // 安全删除
                 if (targetFilePath.startsWith(this.uploadDir)) {
-                    Files.deleteIfExists(targetFilePath);
+                    boolean deleted = Files.deleteIfExists(targetFilePath);
+                    if (deleted) {
+                        // 如果删除成功，尝试清理空的父目录
+                        deleteEmptyParents(targetFilePath.getParent());
+                    }
                 }
             }
 
@@ -212,6 +217,30 @@ public class FilepondUploader {
 
         // [安全修复] 需要防止路径遍历
         return finalFilePath.normalize();
+    }
+
+    /**
+     * 递归删除空的父目录，直到到达上传根目录为止
+     * @param parentPath 当前需要检查的父目录路径
+     */
+    private void deleteEmptyParents(Path parentPath) {
+        // 1. 安全边界检查：如果 parentPath 为空，或者已经退到了 uploadDir 之外，停止递归
+        if (parentPath == null || !parentPath.startsWith(this.uploadDir) || parentPath.equals(this.uploadDir)) {
+            return;
+        }
+
+        // 2. 尝试列出目录内容
+        try (Stream<Path> entries = Files.list(parentPath)) {
+            if (!entries.findFirst().isPresent()) {
+                Files.delete(parentPath);
+                deleteEmptyParents(parentPath.getParent());
+            }
+        }  catch (Exception e) {
+            // 如果删除失败（例如目录非空、权限问题等），直接停止递归，这是正常的
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("Stopped cleaning empty parents at: {} (Reason: {})", parentPath, e.getMessage());
+            }
+        }
     }
 
     /**
