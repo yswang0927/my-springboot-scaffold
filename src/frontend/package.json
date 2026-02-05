@@ -10,6 +10,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@ant-design/x": "^2.2.1",
+    "@ant-design/x-markdown": "^2.2.1",
+    "@ant-design/x-sdk": "^2.2.1",
     "@hookform/resolvers": "^5.2.2",
     "ahooks": "^3.9.6",
     "axios": "^1.13.2",

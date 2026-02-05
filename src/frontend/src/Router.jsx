@@ -9,6 +9,7 @@ const Settings = lazy(() => import('./pages/setting'));
 const MsgpackPage = lazy(() => import('./pages/msgpack'));
 const FileUploadPage = lazy(() => import('./pages/fileupload'));
 const ResumableUploadPage = lazy(() => import('./pages/fileupload/resumable'));
+const AIChat = lazy(() => import('./pages/aichat/Chat'));
 
 export default function Router() {
     return (
@@ -21,6 +22,7 @@ export default function Router() {
                     <Route path="/msgpack" element={<MsgpackPage />} />
                     <Route path="/fileupload" element={<FileUploadPage />} />
                     <Route path="/resumableupload" element={<ResumableUploadPage />} />
+                    <Route path="/aichat" element={<AIChat />} />
                 </Route>
             </Routes>
         </Suspense>

@@ -1,5 +1,5 @@
 import { Outlet, Link } from "react-router-dom";
-import { Braces, House, ScanFace, Upload, UploadCloud, Settings } from 'lucide-react';
+import { Bot, Braces, House, ScanFace, Upload, UploadCloud, Settings } from 'lucide-react';
 
 export default function DefaultLayout() {
     return (
@@ -12,9 +12,10 @@ export default function DefaultLayout() {
                     <li><Link to="/msgpack" className="flex items-center gap-4"> <Braces/> Msgpack测试</Link></li>
                     <li><Link to="/fileupload" className="flex items-center gap-4"> <UploadCloud/> Filepond文件上传</Link></li>
                     <li><Link to="/resumableupload" className="flex items-center gap-4"> <Upload/> Resumable文件上传</Link></li>
+                    <li><Link to="/aichat" className="flex items-center gap-4"> <Bot/> AI聊天</Link></li>
                 </ul>
             </div>
-            <div style={{flex: 1}}><Outlet /></div>
+            <div style={{flex: 1, height: "100vh"}}><Outlet /></div>
         </div>
     );
 }
