@@ -35,6 +35,7 @@ export default function ResumableUploadPage() {
         const rafId = requestAnimationFrame(init);
 
         return () => {
+            console.log(">>> ResumableUploadPage unmounted");
             cancelAnimationFrame(rafId);
             if (resumableRef.current) {
                 resumableRef.current.destroy();

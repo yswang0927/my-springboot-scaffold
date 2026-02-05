@@ -16,6 +16,7 @@
     "filepond": "^4.32.11",
     "filepond-plugin-file-validate-size": "^2.2.8",
     "filepond-plugin-file-validate-type": "^1.2.9",
+    "lucide-react": "^0.563.0",
     "msgpackr": "^1.11.8",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
