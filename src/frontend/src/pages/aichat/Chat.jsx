@@ -1,4 +1,12 @@
-import { SyncOutlined, OpenAIOutlined, AntDesignOutlined, PaperClipOutlined, ApiOutlined } from '@ant-design/icons';
+import { 
+    SyncOutlined, 
+    OpenAIOutlined, 
+    AntDesignOutlined, 
+    PaperClipOutlined, 
+    ApiOutlined,
+    CodeOutlined,
+    EditOutlined
+} from '@ant-design/icons';
 import { Bubble, Sender, Think } from '@ant-design/x';
 import XMarkdown from '@ant-design/x-markdown';
 import {
@@ -7,9 +15,11 @@ import {
   useXChat,
   XRequest,
 } from '@ant-design/x-sdk';
-import { Button, Divider, Flex, Tooltip, Switch, Dropdown } from 'antd';
+import { Button, Divider, Flex, Tooltip, Dropdown } from 'antd';
 import {useEffect, useState, memo} from 'react';
 
+
+const Switch = Sender.Switch;
 
 /**
  * 🔔 请替换 BASE_URL、PATH、MODEL、API_KEY 为您自己的值
@@ -29,17 +39,13 @@ const useLocale = () => {
     addAIMessage: isCN ? '添加AI消息' : 'Add an AI message',
     addSystemMessage: isCN ? '添加系统消息' : 'Add a system message',
     editLastMessage: isCN ? '编辑最后一条消息' : 'Edit the last message',
-    placeholder: isCN
-      ? '请输入内容，按下 Enter 发送消息'
-      : 'Please enter content and press Enter to send message',
+    placeholder: isCN ? '请输入内容，按下 Enter 发送消息' : 'Please enter content and press Enter to send message',
     waiting: isCN ? '请稍候...' : 'Please wait...',
     requestAborted: isCN ? '请求已中止' : 'Request is aborted',
     requestFailed: isCN ? '请求失败，请重试！' : 'Request failed, please try again!',
     currentStatus: isCN ? '当前状态：' : 'Current status:',
     requesting: isCN ? '请求中' : 'Requesting',
-    noMessages: isCN
-      ? '暂无消息，请输入问题并发送'
-      : 'No messages yet, please enter a question and send',
+    noMessages: isCN ? '暂无消息，请输入问题并发送' : 'No messages yet, please enter a question and send',
     qaCompleted: isCN ? '问答完成' : 'Q&A completed',
     retry: isCN ? '重试' : 'Retry',
   };
@@ -65,6 +71,11 @@ const slotConfig = [
         },
     },
     { type: 'text', value: '字。' },
+];
+
+const dropdownItems = [
+    {key: 'menu-1', label: 'AI写作助手', icon: <EditOutlined />},
+    {key: 'menu-2', label: '代码生成助手', icon: <CodeOutlined />},
 ];
 
 // 思考组件：显示AI思考过程的加载状态
@@ -127,7 +138,7 @@ const Chat = () => {
   );
 
   const [deepThink, setDeepThink] = useState(true);
-  const [activeAgentKey, setActiveAgentKey] = useState('ai_writing');
+  const [activeMenuKey, setActiveMenuKey] = useState('menu-1');
 
   // 聊天消息管理：处理消息列表、请求状态、错误处理等
   const { onRequest, messages, setMessages, setMessage, isRequesting, abort, onReload } = useXChat({
@@ -198,12 +209,12 @@ const Chat = () => {
     });
   };
 
-  const agentItemClick = (item) => {
-    setActiveAgentKey(item.key);
+  const dropdownItemClick = (item) => {
+    setActiveMenuKey(item.key);
   };
 
   return (
-    <Flex vertical gap="middle" className="full-height">
+    <Flex vertical gap="middle" className="full-height" style={{width:'80%', margin:'0 auto'}}>
       {/* 状态和控制区域：显示当前状态并提供操作按钮 */}
       <Flex vertical gap="middle">
         <div>
@@ -228,6 +239,7 @@ const Chat = () => {
           </Button>
         </Flex>
       </Flex>
+
       <Divider size='small' />
       
       {/* 消息列表：显示所有聊天消息 */}
@@ -309,9 +321,9 @@ const Chat = () => {
                 />
                 <Dropdown
                   menu={{
-                    selectedKeys: [],
-                    onClick: agentItemClick,
-                    items: [],
+                    selectedKeys: [activeMenuKey],
+                    onClick: dropdownItemClick,
+                    items: dropdownItems,
                   }}
                 >
                   <Switch value={false} icon={<AntDesignOutlined />}>功能应用</Switch>
