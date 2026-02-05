@@ -1,4 +1,4 @@
-import { SyncOutlined } from '@ant-design/icons';
+import { SyncOutlined, OpenAIOutlined, AntDesignOutlined, PaperClipOutlined, ApiOutlined } from '@ant-design/icons';
 import { Bubble, Sender, Think } from '@ant-design/x';
 import XMarkdown from '@ant-design/x-markdown';
 import {
@@ -7,7 +7,7 @@ import {
   useXChat,
   XRequest,
 } from '@ant-design/x-sdk';
-import { Button, Divider, Flex, Tooltip } from 'antd';
+import { Button, Divider, Flex, Tooltip, Switch, Dropdown } from 'antd';
 import {useEffect, useState, memo} from 'react';
 
 
@@ -44,6 +44,28 @@ const useLocale = () => {
     retry: isCN ? '重试' : 'Retry',
   };
 };
+
+const slotConfig = [
+    { type: 'text', value: '请帮我写一篇关于' },
+    {
+        type: 'select',
+        key: 'writing_type',
+        props: {
+            options: ['校园', '旅行', '阅读'],
+            placeholder: '请输入主题',
+        },
+    },
+    { type: 'text', value: '的文章。要求是' },
+    {
+        type: 'content',
+        key: 'writing_num',
+        props: {
+            defaultValue: '800',
+            placeholder: '[请输入字数]',
+        },
+    },
+    { type: 'text', value: '字。' },
+];
 
 // 思考组件：显示AI思考过程的加载状态
 const ThinkComponent = memo((props) => {
@@ -103,6 +125,9 @@ const Chat = () => {
       })
     })
   );
+
+  const [deepThink, setDeepThink] = useState(true);
+  const [activeAgentKey, setActiveAgentKey] = useState('ai_writing');
 
   // 聊天消息管理：处理消息列表、请求状态、错误处理等
   const { onRequest, messages, setMessages, setMessage, isRequesting, abort, onReload } = useXChat({
@@ -171,6 +196,10 @@ const Chat = () => {
     setMessage(lastMessage.id, {
       message: { role: lastMessage.message.role, content: locale.editLastMessage },
     });
+  };
+
+  const agentItemClick = (item) => {
+    setActiveAgentKey(item.key);
   };
 
   return (
@@ -255,7 +284,47 @@ const Chat = () => {
           });
           setContent('');
         }}
+        slotConfig={slotConfig}
         autoSize={{ minRows: 3, maxRows: 6 }}
+        suffix={false}
+        footer={(actionNode) => {
+          return (
+            <Flex justify="space-between" align="center">
+              <Flex gap="small" align="center">
+                <Button type="text" icon={<PaperClipOutlined />} />
+                <Switch
+                  value={deepThink}
+                  checkedChildren={
+                    <>
+                      深度思考：<span>开启</span>
+                    </>
+                  }
+                  unCheckedChildren={
+                    <>
+                      深度思考：<span>关闭</span>
+                    </>
+                  }
+                  onChange={(checked) => {setDeepThink(checked);}}
+                  icon={<OpenAIOutlined />}
+                />
+                <Dropdown
+                  menu={{
+                    selectedKeys: [],
+                    onClick: agentItemClick,
+                    items: [],
+                  }}
+                >
+                  <Switch value={false} icon={<AntDesignOutlined />}>功能应用</Switch>
+                </Dropdown>
+              </Flex>
+              <Flex align="center">
+                <Button type="text" icon={<ApiOutlined />} />
+                <Divider orientation="vertical" />
+                {actionNode}
+              </Flex>
+            </Flex>
+          );
+        }}
       />
 
     </Flex>
