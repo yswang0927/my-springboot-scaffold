@@ -96,11 +96,11 @@ public class ResumableChunk {
 
     public long getChunkStartOffset() {
         validate();
-        return Math.min((this.getChunkNo() - 1) * this.getChunkSize(), this.getFileSize() - 1);
+        return Math.min((this.chunkNo - 1) * this.chunkSize, this.fileSize - 1);
     }
 
     public void validate() {
-        if (this.getFileId() == null || this.getFileId().isEmpty()) {
+        if (this.getFileId() == null || this.getFileId().trim().isEmpty()) {
             throw new FileUploadException("文件唯一标识fileId不能为空");
         }
         if (this.getChunkNo() == null || this.getChunkNo() < 1) {

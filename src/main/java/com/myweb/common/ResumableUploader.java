@@ -15,7 +15,6 @@ import java.util.stream.Stream;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.util.StringUtils;
 
 import com.myweb.exception.FileUploadException;
 
@@ -30,6 +29,10 @@ public class ResumableUploader {
     // 定时清理任务间隔：30分钟
     private static final int CLEANUP_INTERVAL = 30;
     private static final TimeUnit CLEANUP_INTERVAL_TIMEUNIT = TimeUnit.MINUTES;
+
+    private static final int BUFFER_SIZE = 8192;
+    private static final String TEMP_FILE_PREFIX = ".rsm-";
+    private static final String TEMP_FILE_SUFFIX = ".tmp";
 
     private final AtomicBoolean cleanupTaskStarted = new AtomicBoolean(false);
     private ScheduledExecutorService cleanerExecutor;
@@ -69,21 +72,22 @@ public class ResumableUploader {
         }
 
         if (chunk == null) {
-            closeBody(chunkBody);
-            throw new FileUploadException("无效的分块");
+            closeQuietly(chunkBody);
+            throw new FileUploadException("无效的分块参数");
         }
 
         // 验证参数
         try {
             chunk.validate();
         } catch (FileUploadException e) {
-            closeBody(chunkBody);
+            closeQuietly(chunkBody);
             throw e;
         }
 
         final String fileId = chunk.getFileId();
         final String fileName = chunk.getFileName();
         final long fileSize = chunk.getFileSize();
+        final int chunkNo = chunk.getChunkNo();
         final long offset = chunk.getChunkStartOffset();
 
         // 简单的超限检查
@@ -91,10 +95,10 @@ public class ResumableUploader {
             throw new FileUploadException("文件大小超限：" + this.maxFileSizeBytes);
         }
 
-        UploadTask uploadTask = this.uploadTasksMap.computeIfAbsent(fileId,
-                (id) -> new UploadTask(fileName, chunk.getRelativePath(), chunk.getTotalChunks()));
-        uploadTask.touch();
+        UploadTask uploadTask = this.uploadTasksMap.computeIfAbsent(fileId, (id) -> new UploadTask(fileName, chunk.getRelativePath(), chunk.getTotalChunks()));
+        uploadTask.touch(); // 更新最后活跃时间，避免被定时清理
 
+        // 生成临时文件路径（上传根目录下的隐藏临时文件）
         Path tempFilePath = this.uploadDir.resolve(generateTempFileName(fileId));
 
         // 先立刻创建完整大小的临时文件占位磁盘，避免后续分块写入时磁盘空间不足
@@ -110,9 +114,11 @@ public class ResumableUploader {
                             try {
                                 Files.deleteIfExists(tempFilePath);
                             } catch (IOException ignored) {}
-                            throw new FileUploadException(">> ERROR: Failed to allocate disk space for uploading-file: " + fileName);
+
+                            throw new FileUploadException(String.format("为文件 %s 预分配磁盘空间失败：%s", fileName, e.getMessage()));
                         }
                     }
+                    // 标记临时文件已分配磁盘空间
                     uploadTask.markFilePreallocated();
                 }
             }
@@ -121,46 +127,48 @@ public class ResumableUploader {
         try (RandomAccessFile raf = new RandomAccessFile(tempFilePath.toFile(), "rw")) {
             raf.seek(offset);
 
-            byte[] buffer = new byte[8192];
+            byte[] buffer = new byte[BUFFER_SIZE];
             int bytesRead;
             while ((bytesRead = chunkBody.read(buffer)) != -1) {
                 raf.write(buffer, 0, bytesRead);
             }
 
         } catch (IOException e) {
-            throw new FileUploadException(">> ERROR: Failed to saving chunk: " + e.getMessage());
+            throw new FileUploadException(String.format("保存文件 %s 分块 %d 失败：%s", fileId, chunkNo, e.getMessage()));
         } finally {
-            closeBody(chunkBody);
+            closeQuietly(chunkBody);
         }
 
-        // 记录本次成功上传的分块
+        // 标记分块为已上传
         uploadTask.addChunk(chunk.getChunkNo());
 
         // 检查是否全部完成
         if (uploadTask.isAllChunksUploaded()) {
             synchronized (uploadTask) {
                 // 双重检查：确保只有一个线程进行文件重命名
-                if (Files.exists(tempFilePath)) {
+                if (Files.exists(tempFilePath) && !uploadTask.isCompleted()) {
                     String targetFileName = uploadTask.fileName;
                     try {
                         // 1. [安全防御] 防止路径遍历 (重要！例如 ../../etc/passwd)
                         Path targetFilePath = resolveTargetFilePath(targetFileName, uploadTask.relativePath);
                         if (!targetFilePath.startsWith(this.uploadDir)) {
-                            throw new FileUploadException("Invalid upload path traversal attempt: " + uploadTask.relativePath);
+                            throw new FileUploadException("非法的文件上传路径，禁止目录遍历：" + uploadTask.relativePath);
                         }
 
                         // 2. 自动创建父目录
-                        if (targetFilePath.getParent() != null) {
-                            if (!Files.exists(targetFilePath.getParent())) {
-                                Files.createDirectories(targetFilePath.getParent());
-                            }
+                        if (targetFilePath.getParent() != null && !Files.exists(targetFilePath.getParent())) {
+                            Files.createDirectories(targetFilePath.getParent());
                         }
 
-                        Files.move(tempFilePath, targetFilePath, StandardCopyOption.REPLACE_EXISTING);
+                        // 3. 移动临时文件为正式文件，替换已存在的文件
+                        Files.move(tempFilePath, targetFilePath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                        uploadTask.markCompleted(); // 标记任务完成
+                        // 注意：这里不要立刻移除缓存任务，因为客户端可能会撤销上传，需要提供给后面可能的删除文件使用
+                        // 缓存的清理由 cleanup 定时任务处理
+                        //this.uploadTasksMap.remove(fileId);
                         return true;
                     } catch (IOException e) {
-                        LOG.error(">> ERROR: Failed to rename uploaded temp-file<{}> to <{}>, caused by: {}",
-                                fileId, targetFileName, e.getMessage());
+                        throw new FileUploadException("文件上传完成，重命名失败：" + e.getMessage());
                     }
                 }
             }
@@ -195,7 +203,7 @@ public class ResumableUploader {
             Path tempFilePath = this.uploadDir.resolve(generateTempFileName(fileId));
             Files.deleteIfExists(tempFilePath);
 
-            if (StringUtils.hasText(task.fileName)) {
+            if (hasText(task.fileName)) {
                 Path targetFilePath = resolveTargetFilePath(task.fileName, task.relativePath);
                 // 安全删除
                 if (targetFilePath.startsWith(this.uploadDir)) {
@@ -208,14 +216,14 @@ public class ResumableUploader {
             }
 
         } catch (IOException e) {
-            LOG.error(">> ERROR: Revert uploaded file<{}> failed: {}", fileId, e.getMessage());
+            LOG.error(">> ERROR: 删除上传的文件 <{}> 失败: {}", task.fileName, e.getMessage());
         }
     }
 
     private Path resolveTargetFilePath(String fileName, String relativePath) {
         // 处理如果上传的是目录
         Path finalFilePath;
-        if (StringUtils.hasText(relativePath)) {
+        if (hasText(relativePath)) {
             if (relativePath.endsWith(fileName)) {
                 finalFilePath = this.uploadDir.resolve(relativePath);
             } else {
@@ -248,13 +256,11 @@ public class ResumableUploader {
             }
         }  catch (Exception e) {
             // 如果删除失败（例如目录非空、权限问题等），直接停止递归，这是正常的
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("Stopped cleaning empty parents at: {} (Reason: {})", parentPath, e.getMessage());
-            }
+            LOG.error(">> ERROR: 删除上传的空目录 <{}> 失败: {}", parentPath, e.getMessage());
         }
     }
 
-    private void closeBody(InputStream body) {
+    private void closeQuietly(InputStream body) {
         try {
             if (body != null) {
                 body.close();
@@ -267,14 +273,15 @@ public class ResumableUploader {
      */
     public void startCleanupTask() {
         if (this.cleanupTaskStarted.compareAndSet(false, true)) {
-            LOG.info(">> Start upload cleanup-schedule-task.");
             this.cleanerExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
                 Thread t = new Thread(r, "uploader-cleaner");
                 t.setDaemon(true);
+                t.setPriority(Thread.MIN_PRIORITY);
                 return t;
             });
             // 定期检查过期任务
             cleanerExecutor.scheduleAtFixedRate(this::cleanExpiredTasks, CLEANUP_INTERVAL, CLEANUP_INTERVAL, CLEANUP_INTERVAL_TIMEUNIT);
+            LOG.info(">> 分块上传定时清理任务已启动，间隔{}分钟，过期时间{}小时", CLEANUP_INTERVAL, EXPIRE_TIME_MILLIS / 3600000);
         }
     }
 
@@ -282,15 +289,24 @@ public class ResumableUploader {
      * 关闭定时清理任务
      */
     public void shutdownCleanupTask() {
-        if (this.cleanupTaskStarted.get()) {
-            LOG.info(">> Stop upload cleanup-schedule-task.");
+        if (this.cleanupTaskStarted.compareAndSet(true, false)) {
+            LOG.info(">> 开始关闭分块上传定时清理任务...");
             this.cleanerExecutor.shutdown();
+            try {
+                if (!this.cleanerExecutor.awaitTermination(1, TimeUnit.MINUTES)) {
+                    this.cleanerExecutor.shutdownNow(); // 强制关闭
+                }
+            } catch (InterruptedException e) {
+                this.cleanerExecutor.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+            LOG.info(">> 分块上传定时清理任务已关闭");
         }
     }
 
     private String generateTempFileName(String fileId) {
         // 临时文件建议加个后缀或前缀，避免和正式文件混淆
-        return "." + fileId + ".temp";
+        return TEMP_FILE_PREFIX + fileId.replace(".", "").replace("/", "") + TEMP_FILE_SUFFIX;
     }
 
     /**
@@ -319,10 +335,22 @@ public class ResumableUploader {
                         LOG.info(">> 自动删除上传的过期文件: {}", tempFilePath.getFileName().toString());
                     }
                 } catch (IOException e) {
-                    LOG.warn(">> WARNING: upload-cleanup-task failed to delete expired temp file: {}", fileId);
+                    LOG.warn(">> WARNING: 自动删除上传的过期文件 <{}> 失败: {}", fileId, e.getMessage());
                 }
             }
         }
+    }
+
+    public static boolean hasText(String str) {
+        if (str == null || str.isEmpty()) {
+            return false;
+        }
+        for (int i = 0,len = str.length(); i < len; i++) {
+            if (!Character.isWhitespace(str.charAt(i))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // ---------------------------------
@@ -334,8 +362,10 @@ public class ResumableUploader {
 
         // 最后活跃时间，用于定时清理
         volatile long lastActiveTime = System.currentTimeMillis();
-        // 用来判断占位临时文件是否已经创建
-        volatile boolean filePreallocated = false;
+        // 文件是否已预分配磁盘空间
+        volatile boolean filePreallocated;
+        // 任务是否已完成（所有分块上传并生成正式文件）
+        volatile boolean completed;
 
         private int[] allChunks;
 
@@ -343,8 +373,8 @@ public class ResumableUploader {
             if (totalChunks < 1) {
                 throw new FileUploadException("无效的分块总数: " + totalChunks);
             }
-            this.fileName = fileName;
-            this.relativePath = relativePath != null ? relativePath : "";
+            this.fileName = ResumableUploader.hasText(fileName) ? fileName : "unknown-file";
+            this.relativePath = ResumableUploader.hasText(relativePath) ? relativePath : "";
             this.allChunks = new int[totalChunks];
         }
 
@@ -358,6 +388,17 @@ public class ResumableUploader {
 
         boolean isFilePreallocated() {
             return this.filePreallocated;
+        }
+
+        /**
+         * 标记任务已完成
+         */
+        void markCompleted() {
+            this.completed = true;
+        }
+
+        boolean isCompleted() {
+            return this.completed;
         }
 
         synchronized void addChunk(int chunkNo) {

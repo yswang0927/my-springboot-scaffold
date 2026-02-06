@@ -1492,10 +1492,10 @@ Resumable.MIME_TYPES = {
     "zip": "application/zip"
 };
 Resumable.FILE_ICONS = {
-    'file': '<svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M11.98 0h-8c-.55 0-1 .45-1 1v18c0 .55.45 1 1 1h13c.55 0 1-.45 1-1V6l-6-6zm4 18h-11V2h6v5h5v11z" fill-rule="evenodd"></path></svg>',
-    'img': '<svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M15 9c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm4-7H1c-.55 0-1 .45-1 1v14c0 .55.45 1 1 1h18c.55 0 1-.45 1-1V3c0-.55-.45-1-1-1zm-1 13l-6-5-2 2-4-5-4 8V4h16v11z" fill-rule="evenodd"/></svg>',
-    'audio': '<svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M19 0c-.08 0-.16.03-.24.05V.03l-12 3v.02C6.33 3.16 6 3.53 6 4v11.35c-.59-.22-1.27-.35-2-.35-2.21 0-4 1.12-4 2.5S1.79 20 4 20c1.94 0 3.55-.86 3.92-2H8V7.78l10-2.5v7.07c-.59-.22-1.27-.35-2-.35-2.21 0-4 1.12-4 2.5s1.79 2.5 4 2.5c1.94 0 3.55-.86 3.92-2H20V1c0-.55-.45-1-1-1z"/></svg>',
-    'video': '<svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M19 2H1c-.55 0-1 .45-1 1v14c0 .55.45 1 1 1h18c.55 0 1-.45 1-1V3c0-.55-.45-1-1-1zM7 14V6l6 4-6 4z"/></svg>'
+    'file': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5M12 12v6M15 15l-3-3-3 3"/></svg>',
+    'img': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><circle cx="10" cy="12" r="2"/><path d="M20 17l-1.296-1.296a2.41 2.41 0 0 0-3.408 0L9 22"/></svg>',
+    'audio': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.65 22H18a2 2 0 0 0 2-2V8a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v10.35"/><path d="M14 2v5a1 1 0 0 0 1 1h5M8 20v-7l3 1.474"/><circle cx="6" cy="20" r="2"/></svg>',
+    'video': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10 17.843l3.033-1.755a.64.64 0 0 1 .967.56v4.704a.65.65 0 0 1-.967.56L10 20.157"/><rect width="7" height="6" x="3" y="16" rx="1"/></svg>'
 };
 /**
  * 使用方式：
@@ -1549,11 +1549,11 @@ Resumable.prototype.initUI = function(container) {
             '.resum-browser {color:#2D72D2;} .resum-browser:hover {text-decoration:underline;}'+
             '.resum-files-list {max-height:300px;overflow-y:auto;}'+
             '.resum-files-list:not(:empty){margin:10px -20px -20px -20px; padding-bottom:10px; background-color:#fff; border-radius:0 0 5px 5px;}'+
-            '.resum-file-item {padding: 8px 8px;border-top:1px solid #DCE0E5;}'+
-            '.resum-file-icon {width:24px;height:24px;} .resum-file-icon svg path {fill:#738091;}' +
+            '.resum-file-item {font-size:0.85em; padding: 8px 8px;border-top:1px solid #DCE0E5;}'+
+            '.resum-file-icon {width:24px;height:24px;} ' +
             '.resum-file-progress {height:4px;border-radius:2px;background-color:#E5E8EB;}'+
             '.resum-file-progress-indicator {border-radius:2px;background-color:#238551;}'+
-            '.resum-file-progress-value {font-size:0.9em;}'+
+            '.resum-file-progress-value {}'+
             '.resum-tip {padding:5px 10px;border-radius:5px;background-color:rgb(205,66,70);color:#fff;max-width:500px;cursor:default;box-shadow:inset 0 0 0 1px rgba(17,20,24,.2),0 2px 4px rgba(17,20,24,.2),0 8px 24px rgba(17,20,24,.2);}'+
             '.resum-file-actions {display:flex;align-items:center;}'+
             '.resum-file-actions > button {padding:2px;border:0 none;line-height:1.0;color:#404854;margin-left:2px;background-color:transparent;border-radius:3px;cursor:pointer;display:flex;align-items:center;justify-content:center;}'+

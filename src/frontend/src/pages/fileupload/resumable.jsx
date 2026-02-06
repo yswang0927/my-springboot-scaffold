@@ -24,12 +24,12 @@ export default function ResumableUploadPage() {
             const resum = resumableRef.current = new Resumable({
                 url: `${base_url}/api/resumable-upload`,
                 testUrl: `${base_url}/api/resumable-upload-test`,
-                testChunks: true,
+                testChunks: false,
                 autoUpload: true,
                 chunkSize: 5 * 1024 * 1024,
                 forceChunkSize: true,
                 simultaneousUploads: 3,
-                directoryUpload: true,
+                directoryUpload: false,
                 maxFileSize: 5 * 1024 * 1024 * 1024, // 5GB
             });
 
