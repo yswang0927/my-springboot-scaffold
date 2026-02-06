@@ -26,10 +26,10 @@ export default function ResumableUploadPage() {
                 testUrl: `${base_url}/api/resumable-upload-test`,
                 testChunks: false,
                 revertUrl: `${base_url}/api/resumable-upload-revert`, // 撤销已上传的文件接口URL
-                autoUpload: true,
+                autoUpload: false,
                 chunkSize: 5 * 1024 * 1024,
                 forceChunkSize: true,
-                simultaneousUploads: 3,
+                simultaneousUploads: 5,
                 directoryUpload: false,
                 maxFileSize: 5 * 1024 * 1024 * 1024, // 5GB
             });

@@ -659,6 +659,9 @@ const Resumable = window.Resumable = function (opts) {
                 firedRetry = true;
             });
         };
+        $.remove = function() {
+            $.resumableObj.removeFile(this);
+        };
         $.bootstrap = function () {
             $.abort();
             _error = false;
@@ -1519,12 +1522,7 @@ Resumable.MIME_TYPES = {
     "z": "application/x-compress",
     "zip": "application/zip"
 };
-Resumable.FILE_ICONS = {
-    'file': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5M12 12v6M15 15l-3-3-3 3"/></svg>',
-    'img': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><circle cx="10" cy="12" r="2"/><path d="M20 17l-1.296-1.296a2.41 2.41 0 0 0-3.408 0L9 22"/></svg>',
-    'audio': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.65 22H18a2 2 0 0 0 2-2V8a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v10.35"/><path d="M14 2v5a1 1 0 0 0 1 1h5M8 20v-7l3 1.474"/><circle cx="6" cy="20" r="2"/></svg>',
-    'video': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2"/><path d="M14 2v5a1 1 0 0 0 1 1h5M10 17.843l3.033-1.755a.64.64 0 0 1 .967.56v4.704a.65.65 0 0 1-.967.56L10 20.157"/><rect width="7" height="6" x="3" y="16" rx="1"/></svg>'
-};
+
 /**
  * 使用方式：
  * 1. 使用内置提供的UI
@@ -1573,7 +1571,8 @@ Resumable.prototype.initUI = function(container) {
         uiStyle.type = 'text/css';
         uiStyle.textContent = '.resum-drop {padding:20px;border:1px dashed #C5CBD3;color:#383E47;background-color:#E5E8EB;border-radius:5px;font-family:"Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";}' +
             '.resum-dragover {background-color:#F6F7F9;}'+
-            '.resum-subtext{color:#738091;font-size:0.9em;}'+
+            '.resum-file-name {white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}'+
+            '.resum-subtext{color:#738091;font-size:0.85em;}'+
             '.resum-browser {color:#2D72D2;} .resum-browser:hover {text-decoration:underline;}'+
             '.resum-files-list {max-height:300px;overflow-y:auto;}'+
             '.resum-files-list:not(:empty){margin:10px -20px -20px -20px; padding-bottom:10px; background-color:#fff; border-radius:0 0 5px 5px;}'+
@@ -1581,12 +1580,11 @@ Resumable.prototype.initUI = function(container) {
             '.resum-file-icon {width:24px;height:24px;} ' +
             '.resum-file-progress {height:4px;border-radius:2px;background-color:#E5E8EB;}'+
             '.resum-file-progress-indicator {border-radius:2px;background-color:#238551;}'+
-            '.resum-file-progress-value {}'+
             '.resum-tip {padding:5px 10px;border-radius:5px;background-color:rgb(205,66,70);color:#fff;max-width:500px;cursor:default;box-shadow:inset 0 0 0 1px rgba(17,20,24,.2),0 2px 4px rgba(17,20,24,.2),0 8px 24px rgba(17,20,24,.2);}'+
             '.resum-file-actions {display:flex;align-items:center;}'+
-            '.resum-file-actions > button {padding:2px;border:0 none;line-height:1.0;color:#404854;margin-left:2px;background-color:transparent;border-radius:3px;cursor:pointer;display:flex;align-items:center;justify-content:center;}'+
-            '.resum-file-actions > button:hover {background-color:#eef0f2;}'+
-            '.resum-file-actions > button svg:not([fill]) {fill:currentcolor;}'
+            'button.resum-file-btn {min-width:28px;min-height:28px;padding:2px;border:0 none;line-height:1.0;color:#404854;margin-left:2px;background-color:rgba(0,0,0,0.1);cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:50%;}'+
+            'button.resum-file-btn:hover {background-color:#eef0f2;}'+
+            '.resum-hide {display:none !important;}';
         ;
         document.getElementsByTagName('head')[0].appendChild(uiStyle);
     }
@@ -1661,40 +1659,29 @@ Resumable.prototype.initUI = function(container) {
         showTip((file.fileName || file.name) + ' 文件类型不被允许，允许类型：' + r.getOpt('fileTypes').join(', '));
     };
 
-    var FileItem = function(file) {
+    var FileItem = function(file, autoUpload) {
         this.file = file;
         var ele = this.ele = document.createElement('div');
-        var fileExt = 'file';
-        var dotIndex = file.fileName.lastIndexOf('.');
-        if (dotIndex != -1) {
-            fileExt = file.fileName.substring(dotIndex + 1).toLowerCase();
-        }
-        if (/^(png|jpg|jpeg|gif|webp|svg|ico|bmp|tif|apng|avif|wmf|hdr|psd)$/i.test(fileExt)) {
-            fileExt = 'img';
-        } else if (/^(mp4|mov|wmv|flv|avi|webm|mkv|m4v|rm|rmvb|mpeg|mpg|mpe|3gp|f4v|dv|divx|m4r|m4a)$/i.test(fileExt)) {
-            fileExt = 'video';
-        } else if (/^(mp3|aac|ogg|wav|opus|flac|alac|ape|aac3)$/i.test(fileExt)) {
-            fileExt = 'audio';
-        }
-
-        var fileIcon = (Resumable.FILE_ICONS[fileExt] || Resumable.FILE_ICONS['file']);
         ele.className = 'resum-file-item';
         ele.style.cssText = 'display:flex;align-items:center;';
-        ele.innerHTML = '<div class="resum-file-icon" style="display:flex;align-items:center;justify-content:center;">'+ fileIcon +'</div>'+
-            '<div style="flex:1;padding:0 10px;">' +
-            '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">' +
-            '<div style="padding:0 10px 0 5px;"><span class="resum-file-name">'+ file.fileName +'</span> <span class="resum-subtext" style="white-space:nowrap;">('+ file.readableSize +')</span></div>' +
-            '<div data-ref="progressValue" class="resum-file-progress-value" style="white-space:nowrap;">0%</div>' +
+        ele.innerHTML = 
+            '<div><button type="button" data-ref="actionRemove" class="resum-file-btn resum-hide" title="移除"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>'+
+            '<div style="flex:1;padding:0 10px;min-width:0;">' +
+                '<div class="resum-file-info">' +
+                    '<div class="resum-file-name">'+ file.fileName +'</div>' +
+                    '<div style="display:flex;align-items:center;justify-content: space-between;">'+
+                        '<span class="resum-subtext" style="white-space:nowrap;">'+ file.readableSize +'</span>'+
+                        '<span data-ref="progressValue" class="resum-subtext" style="white-space:nowrap;">0%</span>'+
+                    '</div>'+
+                '</div>'+
+                '<div class="resum-file-progress" style="position:relative;">' +
+                    '<div data-ref="progressIndicator" class="resum-file-progress-indicator" style="position:absolute;left:0;top:0;height:100%;width:0;font-size:0;"></div>' +
+                '</div>'+
             '</div>'+
-            '<div class="resum-file-progress" style="position:relative;">' +
-            '<div data-ref="progressIndicator" class="resum-file-progress-indicator" style="position:absolute;left:0;top:0;height:100%;width:0;font-size:0;"></div>' +
-            '</div>'+
-            '</div>'+
-            '<div class="resum-file-actions">' +
-            '<button type="button" data-ref="actionPause" class="resum-file-action-pause" title="暂停上传" style="display:none;"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M6 3H4c-.55 0-1 .45-1 1v8c0 .55.45 1 1 1h2c.55 0 1-.45 1-1V4c0-.55-.45-1-1-1zm6 0h-2c-.55 0-1 .45-1 1v8c0 .55.45 1 1 1h2c.55 0 1-.45 1-1V4c0-.55-.45-1-1-1z" fill-rule="evenodd"></path></svg></button>'+
-            '<button type="button" data-ref="actionPlay" class="resum-file-action-play" title="继续上传" style="display:none;"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M12 8c0-.35-.19-.64-.46-.82l.01-.02-6-4-.01.02A.969.969 0 005 3c-.55 0-1 .45-1 1v8c0 .55.45 1 1 1 .21 0 .39-.08.54-.18l.01.02 6-4-.01-.02c.27-.18.46-.47.46-.82z" fill-rule="evenodd"></path></svg></button>'+
-            '<button type="button" data-ref="actionCancel" class="resum-file-action-cancel" title="取消上传"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M9.41 8l3.29-3.29c.19-.18.3-.43.3-.71a1.003 1.003 0 00-1.71-.71L8 6.59l-3.29-3.3a1.003 1.003 0 00-1.42 1.42L6.59 8 3.3 11.29c-.19.18-.3.43-.3.71a1.003 1.003 0 001.71.71L8 9.41l3.29 3.29c.18.19.43.3.71.3a1.003 1.003 0 00.71-1.71L9.41 8z" fill-rule="evenodd"></path></svg></button>'+
-            '<span data-ref="successTip" style="display:none;line-height:1.0;"><svg width="20" height="20" viewBox="0 0 20 20"><path fill="#238551" d="M15 5c-.28 0-.53.11-.71.29L8 11.59l-2.29-2.3a1.003 1.003 0 00-1.42 1.42l3 3c.18.18.43.29.71.29s.53-.11.71-.29l7-7A1.003 1.003 0 0015 5z" fill-rule="evenodd"></path></svg></span>'+
+            '<div class="resum-file-actions">'+
+                '<button type="button" data-ref="actionPause" class="resum-file-btn resum-hide" title="暂停上传"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/></svg></button>'+
+                '<button type="button" data-ref="actionUpload" class="resum-file-btn resum-hide" title="上传"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 9l-6-6-6 6M12 3v14M5 21h14"/></svg></button>'+
+                '<button type="button" data-ref="actionRevert" class="resum-file-btn resum-hide" title="撤销上传"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5 5.5 5.5 0 0 1-5.5 5.5H11"/></svg></button>'+
             '</div>';
 
         var doms = this.doms = {};
@@ -1702,50 +1689,62 @@ Resumable.prototype.initUI = function(container) {
             doms[e.getAttribute("data-ref")] = e;
         });
 
+        doms['actionRemove'].addEventListener('click', function() {
+            this.remove();
+        }.bind(this));
+
         doms['actionPause'].addEventListener('click', function() {
             this.pause();
         }.bind(this));
 
-        doms['actionPlay'].addEventListener('click', function() {
+        doms['actionUpload'].addEventListener('click', function() {
             this.play();
         }.bind(this));
 
-        doms['actionCancel'].addEventListener('click', function() {
+        doms['actionRevert'].addEventListener('click', function() {
+            this.pause();
             this.cancel();
         }.bind(this));
+
+        if (!autoUpload) {
+            doms['actionRemove'].classList.remove('resum-hide');
+            doms['actionUpload'].classList.remove('resum-hide');
+        }
+
     };
     FileItem.prototype.updateProgress = function(val) {
         this.doms['progressIndicator'].style.width = val + '%';
-        this.doms['progressValue'].innerText = val + '%';
+        this.doms['progressValue'].innerText = '上传 '+ val + '%';
+        this.doms['actionRemove'].classList.add('resum-hide');
 
         if (this.file.isComplete()) {
-            this.doms['actionPause'].style.display = 'none';
-            this.doms['actionPlay'].style.display = 'none';
-            this.doms['actionCancel'].style.display = 'none';
-            this.doms['successTip'].style.display = 'inline-block';
+            this.doms['progressValue'].innerText = '已上传';
+            this.doms['actionPause'].classList.add('resum-hide');
+            this.doms['actionUpload'].classList.add('resum-hide');
+            this.doms['actionRevert'].classList.remove('resum-hide');
         }
         else if (this.file.isPaused()) {
-            this.doms['actionPause'].style.display = 'none';
-            this.doms['actionPlay'].style.display = 'inline-block';
+            this.doms['actionPause'].classList.add('resum-hide');
+            this.doms['actionUpload'].classList.remove('resum-hide');
             this.doms['progressValue'].innerText = '已暂停';
         }
         else if (this.file.isUploading()) {
-            this.doms['actionPlay'].style.display = 'none';
-            this.doms['actionPause'].style.display = 'inline-block';
+            this.doms['actionUpload'].classList.add('resum-hide');
+            //this.doms['actionPause'].classList.remove('resum-hide');
+            this.doms['actionRevert'].classList.remove('resum-hide');
         }
     };
     FileItem.prototype.pause = function() {
         this.file.pause(true);
-        this.doms['actionPause'].style.display = 'none';
-        this.doms['actionPlay'].style.display = 'inline-block';
+        this.doms['actionPause'].classList.add('resum-hide');
+        this.doms['actionUpload'].classList.remove('resum-hide');
         this.doms['progressValue'].innerText = '已暂停';
     };
     FileItem.prototype.play = function() {
         this.file.pause(false);
         this.file.upload();
-        this.doms['actionPlay'].style.display = 'none';
-        this.doms['actionPause'].style.display = 'inline-block';
-        this.doms['progressValue'].innerText = '--';
+        this.doms['actionUpload'].classList.add('resum-hide');
+        this.doms['actionPause'].classList.remove('resum-hide');
     };
     FileItem.prototype.cancel = function() {
         this.file.cancel();
@@ -1753,18 +1752,25 @@ Resumable.prototype.initUI = function(container) {
         r._AddedFileItems[this.file.fileId] = null;
         delete r._AddedFileItems[this.file.fileId];
     };
+    FileItem.prototype.remove = function() {
+        this.file.remove();
+        this.ele.parentNode && this.ele.parentNode.removeChild(this.ele);
+        r._AddedFileItems[this.file.fileId] = null;
+        delete r._AddedFileItems[this.file.fileId];
+    };
 
     r.on('filesAdded', function (newFiles, skippedFiles) {
+        var autoUpload = r.getOpt('autoUpload') === true;
         if (newFiles && newFiles.length > 0) {
             if (r.uiDoms['filesList']) {
                 newFiles.forEach(function(f) {
-                    var fitem = new FileItem(f);
+                    var fitem = new FileItem(f, autoUpload);
                     r._AddedFileItems[f.fileId] = fitem;
                     r.uiDoms['filesList'].appendChild(fitem.ele);
                 });
             }
 
-            if (r.getOpt('autoUpload') === true) {
+            if (autoUpload) {
                 r.upload();
             }
         }
@@ -1777,9 +1783,6 @@ Resumable.prototype.initUI = function(container) {
     });
     r.on('fileError', function (file, msg) {
         showTip(file.fileName + ' 上传失败：'+ (msg || '未知原因'));
-    });
-    r.on('fileReverted', function (file) {
-        showTip(file.fileName + ' 已撤销上传');
     });
     r.on('error', function (msg, file) {
         showTip(msg);
