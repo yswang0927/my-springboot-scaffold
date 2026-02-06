@@ -619,9 +619,9 @@ const Resumable = window.Resumable = function (opts) {
                     $.resumableObj.uploadNextChunk();
                 }
             });
-            // jack 移动到下面的revert接口中
-            //$.resumableObj.removeFile($);
-            //$.resumableObj.fire('fileProgress', $);
+           
+            $.resumableObj.removeFile($);
+            $.resumableObj.fire('fileProgress', $);
 
             // jack 撤销已上传的文件
             var revertUrl = $.getOpt('revertUrl');
@@ -632,8 +632,6 @@ const Resumable = window.Resumable = function (opts) {
                 xhr.onreadystatechange = function() {
                     if (xhr.readyState === 4) {
                         if (xhr.status >= 200 && xhr.status < 300) {
-                            $.resumableObj.removeFile($);
-                            $.resumableObj.fire('fileProgress', $);
                             $.resumableObj.fire('fileReverted', $);
                         } else {
                             $.resumableObj.fire('fileRevertFailed', $);
@@ -1555,6 +1553,7 @@ Resumable.prototype.initUI = function(container) {
     var dropTargetEle = r.getOpt('dropTarget'), // 自定义的drop区域对象
         browseTargetEle = r.getOpt('browseTarget'), // 自定义的浏览文件触发对象
         filesListTarget = r.getOpt('filesListTarget'); // 自定义的文件列表展示区域对象
+    
     if (typeof dropTargetEle === 'string') {
         dropTargetEle = document.querySelector(dropTargetEle);
     }
@@ -1583,7 +1582,7 @@ Resumable.prototype.initUI = function(container) {
             '.resum-tip {padding:5px 10px;border-radius:5px;background-color:rgb(205,66,70);color:#fff;max-width:500px;cursor:default;box-shadow:inset 0 0 0 1px rgba(17,20,24,.2),0 2px 4px rgba(17,20,24,.2),0 8px 24px rgba(17,20,24,.2);}'+
             '.resum-file-actions {display:flex;align-items:center;}'+
             'button.resum-file-btn {min-width:28px;min-height:28px;padding:2px;border:0 none;line-height:1.0;color:#404854;margin-left:2px;background-color:rgba(0,0,0,0.1);cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:50%;}'+
-            'button.resum-file-btn:hover {background-color:#eef0f2;}'+
+            'button.resum-file-btn:hover {background-color:rgba(0,0,0,0.2);}'+
             '.resum-hide {display:none !important;}';
         ;
         document.getElementsByTagName('head')[0].appendChild(uiStyle);
@@ -1698,7 +1697,7 @@ Resumable.prototype.initUI = function(container) {
         }.bind(this));
 
         doms['actionUpload'].addEventListener('click', function() {
-            this.play();
+            this.upload();
         }.bind(this));
 
         doms['actionRevert'].addEventListener('click', function() {
@@ -1740,11 +1739,11 @@ Resumable.prototype.initUI = function(container) {
         this.doms['actionUpload'].classList.remove('resum-hide');
         this.doms['progressValue'].innerText = '已暂停';
     };
-    FileItem.prototype.play = function() {
-        this.file.pause(false);
+    FileItem.prototype.upload = function() {
+        //.file.pause(false);
         this.file.upload();
         this.doms['actionUpload'].classList.add('resum-hide');
-        this.doms['actionPause'].classList.remove('resum-hide');
+        //this.doms['actionPause'].classList.remove('resum-hide');
     };
     FileItem.prototype.cancel = function() {
         this.file.cancel();
