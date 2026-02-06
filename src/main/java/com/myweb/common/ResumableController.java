@@ -47,7 +47,10 @@ public class ResumableController implements InitializingBean, DisposableBean {
     @PostMapping("/api/resumable-upload")
     public ResponseEntity<String> uploading(ResumableChunk chunk, HttpServletRequest request) {
         try (InputStream body = request.getInputStream()) {
-            this.resumableUploader.saveChunk(chunk, body);
+            boolean completed = this.resumableUploader.saveChunk(chunk, body);
+            if (completed) {
+                System.out.println(">>> 文件上传完成："+ chunk.getFileName());
+            }
             return ResponseEntity.ok("success");
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());

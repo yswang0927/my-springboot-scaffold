@@ -157,7 +157,6 @@ public class ResumableUploader {
                         }
 
                         Files.move(tempFilePath, targetFilePath, StandardCopyOption.REPLACE_EXISTING);
-
                         return true;
                     } catch (IOException e) {
                         LOG.error(">> ERROR: Failed to rename uploaded temp-file<{}> to <{}>, caused by: {}",
@@ -315,8 +314,10 @@ public class ResumableUploader {
             if (task != null) {
                 try {
                     Path tempFilePath = this.uploadDir.resolve(generateTempFileName(fileId));
-                    Files.deleteIfExists(tempFilePath);
-                    LOG.info(">> 自动删除上传的过期文件: {}", tempFilePath.getFileName().toString());
+                    boolean res = Files.deleteIfExists(tempFilePath);
+                    if (res) {
+                        LOG.info(">> 自动删除上传的过期文件: {}", tempFilePath.getFileName().toString());
+                    }
                 } catch (IOException e) {
                     LOG.warn(">> WARNING: upload-cleanup-task failed to delete expired temp file: {}", fileId);
                 }
