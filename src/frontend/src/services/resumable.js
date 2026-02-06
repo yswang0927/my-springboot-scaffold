@@ -34,6 +34,7 @@ const Resumable = window.Resumable = function (opts) {
         testUrl: null,
         testMethod: 'GET',
         testChunks: false,
+        revertUrl: null, // jack: 撤销已上传的文件接口URL
         chunkSize: 5 * 1024 * 1024,
         forceChunkSize: true,
         simultaneousUploads: 3,
@@ -618,8 +619,35 @@ const Resumable = window.Resumable = function (opts) {
                     $.resumableObj.uploadNextChunk();
                 }
             });
-            $.resumableObj.removeFile($);
-            $.resumableObj.fire('fileProgress', $);
+            // jack 移动到下面的revert接口中
+            //$.resumableObj.removeFile($);
+            //$.resumableObj.fire('fileProgress', $);
+
+            // jack 撤销已上传的文件
+            var revertUrl = $.getOpt('revertUrl');
+            if (revertUrl) {
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST', revertUrl, true);
+                xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+                xhr.onreadystatechange = function() {
+                    if (xhr.readyState === 4) {
+                        if (xhr.status >= 200 && xhr.status < 300) {
+                            $.resumableObj.removeFile($);
+                            $.resumableObj.fire('fileProgress', $);
+                            $.resumableObj.fire('fileReverted', $);
+                        } else {
+                            $.resumableObj.fire('fileRevertFailed', $);
+                        }
+                    }
+                };
+                xhr.onerror = function() {
+                    $.resumableObj.fire('fileRevertFailed', $);
+                };
+                var params = [];
+                params.push($.getOpt('parameterNamespace') + $.getOpt('fileIdParameterName') + '=' + encodeURIComponent($.fileId));
+                params.push($.getOpt('parameterNamespace') + $.getOpt('fileNameParameterName') + '=' + encodeURIComponent($.fileName));
+                xhr.send(params.join('&'));
+            }
         };
         $.retry = function () {
             $.bootstrap();
@@ -1564,7 +1592,7 @@ Resumable.prototype.initUI = function(container) {
     }
 
     var uiDoms = r.uiDoms;
-    var showTip = r.getOpt('showMessage') || function(){};
+    var showTip = r.getOpt('showMessage') || function(msg) {console.log(msg)};
 
     if (!dropTargetEle && container) {
         container.innerHTML = '<div style="position:relative; height:100%;">' +
@@ -1749,6 +1777,9 @@ Resumable.prototype.initUI = function(container) {
     });
     r.on('fileError', function (file, msg) {
         showTip(file.fileName + ' 上传失败：'+ (msg || '未知原因'));
+    });
+    r.on('fileReverted', function (file) {
+        showTip(file.fileName + ' 已撤销上传');
     });
     r.on('error', function (msg, file) {
         showTip(msg);

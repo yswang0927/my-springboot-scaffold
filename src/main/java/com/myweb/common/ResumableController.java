@@ -71,4 +71,15 @@ public class ResumableController implements InitializingBean, DisposableBean {
         return ResponseEntity.notFound().build();
     }
 
+    /**
+     * 提供给客户端Resumablejs撤销上传的文件
+     * @param fileId 文件ID
+     * @param fileName 文件名
+     */
+    @PostMapping("/api/resumable-upload-revert")
+    public ResponseEntity<Void> revertFile(@RequestParam("fileId") String fileId, @RequestParam("fileName") String fileName) {
+        this.resumableUploader.revertUploadFile(fileId);
+        return ResponseEntity.ok().build();
+    }
+
 }

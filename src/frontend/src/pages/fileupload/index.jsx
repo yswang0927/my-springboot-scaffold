@@ -80,7 +80,7 @@ export default function FileUploadPage() {
                 name: 'file',
                 server: serverOptions,
                 allowMultiple: true,
-                instantUpload: true, // 是否选择文件后立即上传
+                instantUpload: false, // 是否选择文件后立即上传
                 allowFileSizeValidation: true,
                 allowFileTypeValidation: ALLOWED_FILE_TYPE !== null,
                 allowMinimumUploadDuration: true,

@@ -191,7 +191,7 @@ public class ResumableUploader {
      * 删除文件（取消上传）
      * @param fileId 文件ID
      */
-    public void deleteFile(String fileId) {
+    public void revertUploadFile(String fileId) {
         // 先从 Map 移除，防止后续操作
         UploadTask task = this.uploadTasksMap.remove(fileId);
         if (task == null) {
