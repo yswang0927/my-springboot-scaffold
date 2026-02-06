@@ -2,6 +2,11 @@ import { useState, useRef, useEffect } from "react"
 
 import Resumable from '@/services/resumable';
 
+let base_url = window.APP_BASE_URL ? window.APP_BASE_URL : `${window.location.protocol}//${window.location.hostname}:9090`;
+if (base_url.endsWith('/')) {
+    base_url = base_url.slice(0, -1);
+}
+
 export default function ResumableUploadPage() {
     const divRef = useRef(null);
     const resumableRef = useRef(null);
@@ -17,8 +22,8 @@ export default function ResumableUploadPage() {
             }
 
             const resum = resumableRef.current = new Resumable({
-                url: '/api/upload',
-                testUrl: '/api/upload/test',
+                url: `${base_url}/api/resumable-upload`,
+                testUrl: `${base_url}/api/resumable-upload-test`,
                 testChunks: true,
                 autoUpload: true,
                 chunkSize: 5 * 1024 * 1024,

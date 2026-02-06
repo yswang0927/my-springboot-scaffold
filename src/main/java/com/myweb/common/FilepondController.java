@@ -52,6 +52,12 @@ public class FilepondController implements InitializingBean {
     public FilepondController() {
     }
 
+    @Override
+    public void afterPropertiesSet() {
+        this.filepondUploader = new FilepondUploader(new File(this.uploadDir), DataSize.parse(this.maxFileSize).toBytes());
+        this.filepondUploader.startCleanupTask(); // 启动清理任务
+    }
+
     /**
      * 1. 启动文件上传，先生成一个唯一ID。
      * 唯一 ID 用于回滚上传或恢复之前的上传等。
@@ -117,12 +123,6 @@ public class FilepondController implements InitializingBean {
                 return ResponseEntity.badRequest().body(e.getMessage());
             }
         }
-    }
-
-    @Override
-    public void afterPropertiesSet() {
-        this.filepondUploader = new FilepondUploader(new File(this.uploadDir), DataSize.parse(this.maxFileSize).toBytes());
-        this.filepondUploader.startCleanupTask(); // 启动清理任务
     }
 
     /**
