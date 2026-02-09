@@ -24,8 +24,13 @@ public class RestResponseBodyAdvice implements ResponseBodyAdvice<Object> {
 
     @Override
     public boolean supports(MethodParameter returnType, Class<? extends HttpMessageConverter<?>> converterType) {
-        return !returnType.getContainingClass().isAnnotationPresent(IgnoreRestBody.class)
-                && !returnType.hasMethodAnnotation(IgnoreRestBody.class);
+        if (returnType.hasMethodAnnotation(IgnoreRestBody.class)) {
+            return false;
+        }
+        if (returnType.getContainingClass().isAnnotationPresent(IgnoreRestBody.class)) {
+            return false;
+        }
+        return true;
     }
 
     @Override
