@@ -151,10 +151,6 @@ public class ResumableUploader {
                     try {
                         // 1. [安全防御] 防止路径遍历 (重要！例如 ../../etc/passwd)
                         Path targetFilePath = resolveTargetFilePath(targetFileName, uploadTask.relativePath);
-                        if (!targetFilePath.startsWith(this.uploadDir)) {
-                            throw new FileUploadException("非法的文件上传路径，禁止目录遍历：" + uploadTask.relativePath);
-                        }
-
                         // 2. 自动创建父目录
                         if (targetFilePath.getParent() != null && !Files.exists(targetFilePath.getParent())) {
                             Files.createDirectories(targetFilePath.getParent());
@@ -234,8 +230,12 @@ public class ResumableUploader {
             finalFilePath = this.uploadDir.resolve(fileName);
         }
 
-        // [安全修复] 需要防止路径遍历
-        return finalFilePath.normalize();
+        // [安全防御] 防止路径遍历 (重要！例如 ../../etc/passwd)
+        Path normalizePath = finalFilePath.normalize();
+        if (!normalizePath.startsWith(this.uploadDir)) {
+            throw new FileUploadException("非法的文件上传路径，禁止目录遍历：" + relativePath);
+        }
+        return normalizePath;
     }
 
     /**
@@ -305,8 +305,8 @@ public class ResumableUploader {
     }
 
     private String generateTempFileName(String fileId) {
-        // 临时文件建议加个后缀或前缀，避免和正式文件混淆
-        return TEMP_FILE_PREFIX + fileId.replace(".", "").replace("/", "") + TEMP_FILE_SUFFIX;
+        // 临时文件名
+        return TEMP_FILE_PREFIX + fileId.replace("/", "") + TEMP_FILE_SUFFIX;
     }
 
     /**
