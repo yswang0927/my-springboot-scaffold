@@ -231,11 +231,11 @@ public class ResumableUploader {
         }
 
         // [安全防御] 防止路径遍历 (重要！例如 ../../etc/passwd)
-        Path normalizePath = finalFilePath.normalize();
-        if (!normalizePath.startsWith(this.uploadDir)) {
+        Path normalizedPath = finalFilePath.normalize();
+        if (!normalizedPath.startsWith(this.uploadDir)) {
             throw new FileUploadException("非法的文件上传路径，禁止目录遍历：" + relativePath);
         }
-        return normalizePath;
+        return normalizedPath;
     }
 
     /**
