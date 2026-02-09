@@ -25,4 +25,20 @@ public class CommonController {
         return new ModelAndView("browser-unsupported");
     }
 
+    @GetMapping("/common/error-404")
+    public ModelAndView error404() {
+        ModelAndView mv = new ModelAndView("error");
+        mv.addObject("errorCode", 404);
+        mv.addObject("message", "您访问的页面不存在，请确认访问地址是否正确。");
+        return mv;
+    }
+
+    @GetMapping(value={"/common/error-500", "/common/error"})
+    public ModelAndView error500() {
+        ModelAndView mv = new ModelAndView("error");
+        mv.addObject("errorCode", 500);
+        mv.addObject("message", "噢！发生了点问题。");
+        return mv;
+    }
+
 }
