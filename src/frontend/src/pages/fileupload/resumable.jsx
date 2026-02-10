@@ -10,6 +10,7 @@ if (base_url.endsWith('/')) {
 export default function ResumableUploadPage() {
     const divRef = useRef(null);
     const resumableRef = useRef(null);
+    const [uploadedFiles, setUploadedFiles] = useState([]);
 
     useEffect(() => {
         if (resumableRef.current || !divRef.current) {
@@ -33,7 +34,12 @@ export default function ResumableUploadPage() {
                 directoryUpload: false,
                 maxFileSize: 5 * 1024 * 1024 * 1024, // 5GB
             });
-
+            resum.on('fileSuccess', (file) => {
+                setUploadedFiles(prev => [...prev, file.fileName]);
+            });
+            resum.on('fileReverted', (file) => {
+                setUploadedFiles(prev => prev.filter(f => f !== file.fileName));
+            });
             resum.initUI(divRef.current);
         };
 
@@ -54,6 +60,14 @@ export default function ResumableUploadPage() {
         <div style={{width:'400px', margin:'0 auto', paddingTop:'50px'}}>
             <div>使用 Resumable.js 组件上传文件</div>
             <div ref={divRef}></div>
+            <div>
+                <h3>已上传的文件：</h3>
+                <ul>
+                    {uploadedFiles.map((file, index) => (
+                        <li key={index}><a href={`${base_url}/api/stream-download?filename=${file}`} target="_blank">{file}</a></li>
+                    ))}
+                </ul>
+            </div>
         </div>
     )
 }

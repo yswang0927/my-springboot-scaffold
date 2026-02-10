@@ -1,17 +1,18 @@
 package com.myweb;
 
-import com.myweb.common.LocalFileUploader;
 import io.github.eternalstone.captcha.listener.EasyCaptchaListener;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -20,7 +21,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Date;
 import java.util.List;
-import java.util.Map;
 
 @RestController
 public class TestController {
@@ -40,12 +40,6 @@ public class TestController {
     @RequestMapping(value = "/api/json-data")
     public List<TestBean> testData(@RequestBody(required = false) TestBean payload) {
         return List.of(payload != null ? payload : new TestBean());
-    }
-
-    @CrossOrigin(originPatterns = "*")
-    @PostMapping(value = "/api/fileupload")
-    public LocalFileUploader.UploadStatus fileUpload(@RequestPart("file") MultipartFile file, HttpServletResponse response) {
-        return LocalFileUploader.upload(new File(uploadDir, file.getOriginalFilename()), file, file.getSize(), 1, 10 * 1024 * 1024, 1);
     }
 
     @RequestMapping("/api/verify-captcha")
@@ -87,22 +81,47 @@ public class TestController {
      */
     @GetMapping("/download")
     public StreamingResponseBody downloadFiles(HttpServletResponse response) throws IOException {
-        String boundary = "filesBoundary";
+        String boundary = "filesBoundary_" + System.currentTimeMillis(); // 增加唯一性
+        List<Path> files = List.of(
+                Paths.get(uploadDir).resolve("file1.txt"),
+                Paths.get(uploadDir).resolve("file2.txt")
+        );
+
+        // 核心修复：正确设置响应头
         response.setContentType("multipart/mixed; boundary=" + boundary);
-        List<Path> files = List.of(Paths.get(uploadDir).resolve("file1.txt"), Paths.get(uploadDir).resolve("file2.txt"));
+        response.setHeader(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"multiple-files.zip\"");
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+
         return outputStream -> {
-            try (BufferedOutputStream bos = new BufferedOutputStream(outputStream); OutputStreamWriter writer = new OutputStreamWriter(bos)) {
+            try (BufferedOutputStream bos = new BufferedOutputStream(outputStream)) {
                 for (Path file : files) {
-                    writer.write("--" + boundary + "\r\n");
-                    writer.write("Content-Type: application/octet-stream\r\n");
-                    writer.write("Content-Disposition: attachment; filename=\"" + file.getFileName() + "\"\r\n\r\n");
-                    writer.flush();
+                    // 跳过不存在的文件，避免NPE
+                    if (!Files.exists(file)) {
+                        continue;
+                    }
+
+                    // 1. 写入分隔边界（字节流，避免编码问题）
+                    bos.write(("--" + boundary + "\r\n").getBytes(StandardCharsets.UTF_8));
+                    // 2. 写入文件头信息
+                    bos.write(("Content-Type: application/octet-stream\r\n").getBytes(StandardCharsets.UTF_8));
+                    bos.write(("Content-Disposition: attachment; filename=\"" + file.getFileName() + "\"\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+                    bos.flush();
+
+                    // 3. 写入文件内容（纯字节流，避免字符转换损坏文件）
                     Files.copy(file, bos);
-                    bos.write("\r\n".getBytes());
+                    bos.flush();
+
+                    // 4. 写入文件结束换行
+                    bos.write("\r\n".getBytes(StandardCharsets.UTF_8));
                     bos.flush();
                 }
-                writer.write("--" + boundary + "--\r\n");
-                writer.flush();
+
+                // 写入结束边界
+                bos.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
+                bos.flush();
+            } catch (IOException e) {
+                // 增加异常日志，方便排查
+                throw new IOException("下载文件失败: " + e.getMessage(), e);
             }
         };
     }

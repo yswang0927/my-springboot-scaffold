@@ -1568,7 +1568,7 @@ Resumable.prototype.initUI = function(container) {
         var uiStyle = document.createElement('style');
         uiStyle.id = '_resumable_ui_style_';
         uiStyle.type = 'text/css';
-        uiStyle.textContent = '.resum-drop {padding:20px;border:1px dashed #C5CBD3;color:#383E47;background-color:#E5E8EB;border-radius:5px;font-family:"Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";}' +
+        uiStyle.textContent = '.resum-drop {padding:20px;border:1px dashed #C5CBD3;color:#383E47;background-color:#EAEAEA;border-radius:5px;font-family:"Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";}' +
             '.resum-dragover {background-color:#F6F7F9;}'+
             '.resum-file-name {white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}'+
             '.resum-subtext{color:#738091;font-size:0.85em;}'+
@@ -1579,7 +1579,7 @@ Resumable.prototype.initUI = function(container) {
             '.resum-file-icon {width:24px;height:24px;} ' +
             '.resum-file-progress {height:4px;border-radius:2px;background-color:#E5E8EB;}'+
             '.resum-file-progress-indicator {border-radius:2px;background-color:#238551;}'+
-            '.resum-tip {padding:5px 10px;border-radius:5px;background-color:rgb(205,66,70);color:#fff;max-width:500px;cursor:default;box-shadow:inset 0 0 0 1px rgba(17,20,24,.2),0 2px 4px rgba(17,20,24,.2),0 8px 24px rgba(17,20,24,.2);}'+
+            '.resum-tip {font-size:0.8em;padding:5px 10px;border-radius:5px;background-color:#d32f2f;color:#fff;max-width:500px;cursor:default;box-shadow:inset 0 0 0 1px rgba(17,20,24,.2),0 2px 4px rgba(17,20,24,.2),0 8px 24px rgba(17,20,24,.2);}'+
             '.resum-file-actions {display:flex;align-items:center;}'+
             'button.resum-file-btn {min-width:28px;min-height:28px;padding:2px;border:0 none;line-height:1.0;color:#404854;margin-left:2px;background-color:rgba(0,0,0,0.1);cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:50%;}'+
             'button.resum-file-btn:hover {background-color:rgba(0,0,0,0.2);}'+
