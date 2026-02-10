@@ -40,6 +40,7 @@ const Resumable = window.Resumable = function (opts) {
         simultaneousUploads: 3,
         maxChunkRetries: 3,
         chunkRetryInterval: 300,
+        chunkFormat: 'blob',
         maxFiles: undefined,
         pasteUpload: true, // jack: 是否开启支持粘贴剪切板上传文件
         directoryUpload: false, // jack: 支持上传文件夹(即：上传这个文件夹里的所有文件)
@@ -57,8 +58,8 @@ const Resumable = window.Resumable = function (opts) {
         relativePathParameterName: 'relativePath',
         dragOverClass: 'resum-dragover',
         throttleProgressCallbacks: 0.5,
-        query: {},
-        headers: {},
+        query: {}, // {} | function() { return {}; }
+        headers: {}, // {} | function() { return {}; }
         preprocess: null,
         preprocessFile: null,
         prioritizeFirstAndLastChunk: false,
@@ -69,11 +70,10 @@ const Resumable = window.Resumable = function (opts) {
             }).toLowerCase();
         },
         getTarget: null,
-        permanentErrors: [400, 401, 403, 404, 409, 415, 500, 501],
+        permanentErrors: [400, 401, 403, 404, 409, 415, 500, 501], // 如果服务端响应这些HTTP状态码，则不再重试上传
         withCredentials: false,
         xhrTimeout: 0,
         clearInput: true,
-        chunkFormat: 'blob',
         setChunkTypeFromFile: false,
         responseBodyHandle: function(msg) {
             return msg;
@@ -625,7 +625,7 @@ const Resumable = window.Resumable = function (opts) {
 
             // jack 撤销已上传的文件
             var revertUrl = $.getOpt('revertUrl');
-            if (revertUrl) {
+            if (revertUrl && $._prevProgress > 0) {
                 var xhr = new XMLHttpRequest();
                 xhr.open('POST', revertUrl, true);
                 xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
@@ -970,8 +970,6 @@ const Resumable = window.Resumable = function (opts) {
                 query[k] = v;
             });
 
-            //var func = ($.fileObj.file.slice ? 'slice' : ($.fileObj.file.mozSlice ? 'mozSlice' : ($.fileObj.file.webkitSlice ? 'webkitSlice' : 'slice')));
-            //var bytes = $.fileObj.file[func]($.startByte, $.endByte, $.getOpt('setChunkTypeFromFile') ? $.fileObj.file.type : "");
             var fileSlice = File.prototype.slice || File.prototype.webkitSlice || File.prototype.mozSlice;
             var bytes = fileSlice.call($.fileObj.file, $.startByte, $.endByte, $.getOpt('setChunkTypeFromFile') ? $.fileObj.file.type : "");
             var data = null;
@@ -1568,8 +1566,8 @@ Resumable.prototype.initUI = function(container) {
         var uiStyle = document.createElement('style');
         uiStyle.id = '_resumable_ui_style_';
         uiStyle.type = 'text/css';
-        uiStyle.textContent = '.resum-drop {padding:20px;border:1px dashed #C5CBD3;color:#383E47;background-color:#EAEAEA;border-radius:5px;font-family:"Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";}' +
-            '.resum-dragover {background-color:#F6F7F9;}'+
+        uiStyle.textContent = '.resum-drop {padding:20px;border:1px dashed #C5CBD3;color:#383E47;background-color:#F6F7F9;border-radius:5px;font-family:"Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";}' +
+            '.resum-dragover {background-color: rgba(251, 208, 101, 0.1);}'+
             '.resum-file-name {white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}'+
             '.resum-subtext{color:#738091;font-size:0.85em;}'+
             '.resum-browser {color:#2D72D2;} .resum-browser:hover {text-decoration:underline;}'+
