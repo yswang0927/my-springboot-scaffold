@@ -27,7 +27,7 @@ export default function ResumableUploadPage() {
                 testUrl: `${base_url}/api/resumable-upload-test`,
                 testChunks: false,
                 revertUrl: `${base_url}/api/resumable-upload-revert`, // 撤销已上传的文件接口URL
-                autoUpload: false,
+                autoUpload: true,
                 chunkSize: 5 * 1024 * 1024,
                 forceChunkSize: true,
                 simultaneousUploads: 5,
@@ -56,10 +56,17 @@ export default function ResumableUploadPage() {
         };
     }, []);
 
+    const startUpload = () => {
+        if (resumableRef.current) {
+            resumableRef.current.upload();
+        }
+    };
+
     return (
         <div style={{width:'400px', margin:'0 auto', paddingTop:'50px'}}>
             <div>使用 Resumable.js 组件上传文件</div>
             <div ref={divRef}></div>
+            <div style={{padding: '10px 5px', textAlign:'right'}}><button onClick={startUpload}>全部上传</button></div>
             <div>
                 <h3>已上传的文件：</h3>
                 <ul>

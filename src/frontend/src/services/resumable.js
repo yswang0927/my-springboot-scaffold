@@ -27,6 +27,8 @@ const Resumable = window.Resumable = function (opts) {
     // PROPERTIES
     var $ = this;
     $.files = [];
+    // jack add:
+    $._uploadAllStarted = false;
     $.defaults = {
         url: '',
         uploadType: 'octet', //'multipart',
@@ -70,7 +72,7 @@ const Resumable = window.Resumable = function (opts) {
             }).toLowerCase();
         },
         getTarget: null,
-        permanentErrors: [400, 401, 403, 404, 409, 415, 500, 501], // 如果服务端响应这些HTTP状态码，则不再重试上传
+        permanentErrors: [400, 401, 403, 404, 409, 413, 415, 500, 501], // 如果服务端响应这些HTTP状态码，则不再重试上传
         withCredentials: false,
         xhrTimeout: 0,
         clearInput: true,
@@ -553,6 +555,7 @@ const Resumable = window.Resumable = function (opts) {
         $.relativePath = file.relativePath || file.webkitRelativePath || $.fileName;
         $._prevProgress = 0;
         $._pause = false;
+        $._canceled = false;
         $.container = '';
         $.preprocessState = 0; // 0 = unprocessed, 1 = processing, 2 = finished
         var _error = fileId !== undefined;
@@ -586,7 +589,7 @@ const Resumable = window.Resumable = function (opts) {
         // jack
         $.setMD5 = function(md5) {
             $.md5 = md5;
-            console.log('>>文件<'+ $.fileName +'> MD5 = '+ md5);
+            //console.log('>>文件<'+ $.fileName +'> MD5 = '+ md5);
         };
         $.isReady = function() {
             return (($.getOpt('resumableUpload') === false) || $.md5 !== '');
@@ -609,6 +612,11 @@ const Resumable = window.Resumable = function (opts) {
             }
         };
         $.cancel = function () {
+            if ($._canceled) {
+                return;
+            }
+            $._canceled = true;
+
             // Reset this file to be void
             var _chunks = $.chunks;
             $.chunks = [];
@@ -616,12 +624,16 @@ const Resumable = window.Resumable = function (opts) {
             $h.each(_chunks, function (c) {
                 if (c.status() == 'uploading') {
                     c.abort();
-                    $.resumableObj.uploadNextChunk();
                 }
             });
            
-            $.resumableObj.removeFile($);
+            $.remove();
             $.resumableObj.fire('fileProgress', $);
+
+            // 通知后续队列上传
+            if ($.resumableObj.shouldAutoUploadNext()) {
+                $.resumableObj.uploadNextChunk();
+            }
 
             // jack 撤销已上传的文件
             var revertUrl = $.getOpt('revertUrl');
@@ -920,7 +932,13 @@ const Resumable = window.Resumable = function (opts) {
                 var status = $.status();
                 if (status == 'success' || status == 'error') {
                     $.callback(status, $.message());
-                    $.resumableObj.uploadNextChunk();
+                    // jack add shouldAutoUploadNext check
+                    if ($.resumableObj.shouldAutoUploadNext()) {
+                        $.resumableObj.uploadNextChunk();
+                    } else {
+                        $.fileObj.upload();
+                    }
+                    
                 } else {
                     $.callback('retry', $.message());
                     $.abort();
@@ -1137,6 +1155,7 @@ const Resumable = window.Resumable = function (opts) {
         });
         if (!outstanding) {
             // All chunks have been uploaded, complete
+            $._uploadAllStarted = false;
             $.fire('complete');
         }
         return false;
@@ -1232,12 +1251,17 @@ const Resumable = window.Resumable = function (opts) {
         });
         return uploading;
     };
+    // jack add shouldAutoUploadNext()
+    $.shouldAutoUploadNext = function() {
+        return $._uploadAllStarted || $.getOpt('autoUpload') === true;
+    };
     $.upload = function () {
         // Make sure we don't start too many uploads at once
         if ($.isUploading()) {
             return;
         }
         // Kick off the queue
+        $._uploadAllStarted = true;
         $.fire('uploadStart');
         for (var num = 1; num <= $.getOpt('simultaneousUploads'); num++) {
             $.uploadNextChunk();
@@ -1592,7 +1616,7 @@ Resumable.prototype.initUI = function(container) {
     if (!dropTargetEle && container) {
         container.innerHTML = '<div style="position:relative; height:100%;">' +
             '<div data-ref="dropper" class="resum-drop" tabindex="-1">' +
-            '<div style="text-align:center;margin-bottom:10px;pointer-events:none;"><svg width="48" height="48" viewBox="0 0 20 20" class="resum-icon"><path fill="#8F99A8" d="M10.71 10.29c-.18-.18-.43-.29-.71-.29s-.53.11-.71.29l-3 3a1.003 1.003 0 001.42 1.42L9 13.41V19c0 .55.45 1 1 1s1-.45 1-1v-5.59l1.29 1.29c.18.19.43.3.71.3a1.003 1.003 0 00.71-1.71l-3-3zM15 4c-.12 0-.24.03-.36.04C13.83 1.69 11.62 0 9 0 5.69 0 3 2.69 3 6c0 .05.01.09.01.14A3.98 3.98 0 000 10c0 2.21 1.79 4 4 4 0-.83.34-1.58.88-2.12l3-3a2.993 2.993 0 014.24 0l3 3-.01.01c.52.52.85 1.23.87 2.02C18.28 13.44 20 11.42 20 9c0-2.76-2.24-5-5-5z" fill-rule="evenodd"></path></svg></div>' +
+            '<div style="text-align:center;margin-bottom:10px;pointer-events:none;"><svg width="32" height="32" viewBox="0 0 20 20" class="resum-icon"><path fill="#8F99A8" d="M10.71 10.29c-.18-.18-.43-.29-.71-.29s-.53.11-.71.29l-3 3a1.003 1.003 0 001.42 1.42L9 13.41V19c0 .55.45 1 1 1s1-.45 1-1v-5.59l1.29 1.29c.18.19.43.3.71.3a1.003 1.003 0 00.71-1.71l-3-3zM15 4c-.12 0-.24.03-.36.04C13.83 1.69 11.62 0 9 0 5.69 0 3 2.69 3 6c0 .05.01.09.01.14A3.98 3.98 0 000 10c0 2.21 1.79 4 4 4 0-.83.34-1.58.88-2.12l3-3a2.993 2.993 0 014.24 0l3 3-.01.01c.52.52.85 1.23.87 2.02C18.28 13.44 20 11.42 20 9c0-2.76-2.24-5-5-5z" fill-rule="evenodd"></path></svg></div>' +
             '<div style="text-align:center;font-weight:400;line-height:2.0;font-size:1em;margin-bottom:10px;">拖放文件到这里，或 <div data-ref="browser" class="resum-browser" style="display:inline-block;cursor:pointer;">选择文件</div></div>' +
             (r.getOpt('fileTypes') && r.getOpt('fileTypes').length > 0 ? ('<div style="text-align:center;line-height:1.5;pointer-events:none;" class="resum-subtext resum-filetypes">支持文件类型：' + r.getOpt('fileTypes').join(', ') + '</div>') : '') +
             (r.getOpt('maxFileSize') && r.getOpt('maxFileSize') > 0 ? ('<div style="text-align:center;line-height:1.5;pointer-events:none;" class="resum-subtext resum-max-filesize">单文件最大：' + r.utils.formatSize(r.getOpt('maxFileSize')) + '</div>') : '') +
@@ -1989,6 +2013,8 @@ Resumable.prototype._calcFileMD5 = function(resumFile) {
 };
 
 Resumable.prototype.destroy = function() {
+    this.unAssignDrop();
+
     if (this.canResumableUpload) {
         this.canResumableUpload = false;
         this.md5WorkerPool.close();

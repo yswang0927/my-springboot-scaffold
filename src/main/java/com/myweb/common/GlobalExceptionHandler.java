@@ -2,6 +2,7 @@ package com.myweb.common;
 
 import com.myweb.exception.AccessDeniedException;
 import com.myweb.exception.BadRequestException;
+import com.myweb.exception.FileUploadException;
 import com.myweb.exception.UnAuthenticatedException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -64,6 +65,13 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.FORBIDDEN)
     public ApiResult handleAccessDeniedException(AccessDeniedException e) {
         return ApiResult.failed(HttpStatus.FORBIDDEN.value(), e.getMessage());
+    }
+
+    @ExceptionHandler(FileUploadException.class)
+    @ResponseBody
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ApiResult handleFileUploadException(FileUploadException e) {
+        return ApiResult.failed(HttpStatus.BAD_REQUEST.value(), e.getMessage());
     }
 
     @ExceptionHandler(BadRequestException.class)

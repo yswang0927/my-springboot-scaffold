@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.slf4j.Logger;
@@ -25,7 +26,7 @@ public class ResumableUploader {
     private static final Logger LOG = LoggerFactory.getLogger(ResumableUploader.class);
 
     // 定义过期时间：5小时
-    private static final long EXPIRE_TIME_MILLIS = 5 * 3600 * 1000;
+    private static final long EXPIRE_TIME_MILLIS = 1 * 3600 * 1000;
     // 定时清理任务间隔：30分钟
     private static final int CLEANUP_INTERVAL = 30;
     private static final TimeUnit CLEANUP_INTERVAL_TIMEUNIT = TimeUnit.MINUTES;
@@ -238,6 +239,11 @@ public class ResumableUploader {
         return normalizedPath;
     }
 
+    private String generateTempFileName(String fileId) {
+        // 临时文件名
+        return TEMP_FILE_PREFIX + fileId.replace("/", "") + TEMP_FILE_SUFFIX;
+    }
+
     /**
      * 递归删除空的父目录，直到到达上传根目录为止
      * @param parentPath 当前需要检查的父目录路径
@@ -282,6 +288,20 @@ public class ResumableUploader {
             // 定期检查过期任务
             cleanerExecutor.scheduleAtFixedRate(this::cleanExpiredTasks, CLEANUP_INTERVAL, CLEANUP_INTERVAL, CLEANUP_INTERVAL_TIMEUNIT);
             LOG.info(">> 分块上传定时清理任务已启动，间隔{}分钟，过期时间{}小时", CLEANUP_INTERVAL, EXPIRE_TIME_MILLIS / 3600000);
+
+            // 支持重启后立刻删除磁盘上已经过期的临时文件
+            File dir = this.uploadDir.toFile();
+            File[] willDelete = dir.listFiles(file -> {
+                return file.isFile()
+                        && file.getName().startsWith(TEMP_FILE_PREFIX)
+                        && file.getName().endsWith(TEMP_FILE_SUFFIX)
+                        && (System.currentTimeMillis() - file.lastModified()) > EXPIRE_TIME_MILLIS;
+            });
+            if (willDelete != null &&  willDelete.length > 0) {
+                for (File f : willDelete) {
+                    f.delete();
+                }
+            }
         }
     }
 
@@ -302,11 +322,6 @@ public class ResumableUploader {
             }
             LOG.info(">> 分块上传定时清理任务已关闭");
         }
-    }
-
-    private String generateTempFileName(String fileId) {
-        // 临时文件名
-        return TEMP_FILE_PREFIX + fileId.replace("/", "") + TEMP_FILE_SUFFIX;
     }
 
     /**
