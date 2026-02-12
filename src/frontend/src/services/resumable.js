@@ -1230,6 +1230,9 @@ const Resumable = window.Resumable = function (opts) {
         });
     };
     $.unAssignDrop = function (domNodes) {
+        if (!domNodes) {
+            return;
+        }
         if (typeof (domNodes.length) == 'undefined') {
             domNodes = [domNodes];
         }
