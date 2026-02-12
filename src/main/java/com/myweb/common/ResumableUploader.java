@@ -4,6 +4,8 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.RandomAccessFile;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -12,6 +14,7 @@ import java.util.BitSet;
 import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -27,9 +30,9 @@ public class ResumableUploader {
     private static final Logger LOG = LoggerFactory.getLogger(ResumableUploader.class);
 
     // 定义过期时间：5小时
-    private static final long EXPIRE_TIME_MILLIS = 2 * 60 * 1000; //5 * 3600 * 1000;
+    private static final long EXPIRE_TIME_MILLIS = 5 * 3600 * 1000;
     // 定时清理任务间隔：30分钟
-    private static final int CLEANUP_INTERVAL = 2;
+    private static final int CLEANUP_INTERVAL = 30;
     private static final TimeUnit CLEANUP_INTERVAL_TIMEUNIT = TimeUnit.MINUTES;
 
     private static final int BUFFER_SIZE = 8192;
@@ -103,6 +106,12 @@ public class ResumableUploader {
                 (id) -> new UploadTask(fileName, chunk.getRelativePath(), chunk.getTotalChunks()));
         uploadTask.touch(); // 更新最后活跃时间，避免被定时清理
 
+        // 检查分块是否已上传，避免重复写入
+        if (uploadTask.isChunkUploaded(chunkNo)) {
+            closeQuietly(chunkBody);
+            return uploadTask.isAllChunksUploaded();
+        }
+
         // 生成临时文件路径（上传根目录下的隐藏临时文件）
         final String tmpFileName = generateTempFileName(fileId);
         Path tmpFilePath = this.uploadDir.resolve(tmpFileName);
@@ -111,7 +120,8 @@ public class ResumableUploader {
 
         // 先立刻创建完整大小的临时文件占位磁盘，避免后续分块写入时磁盘空间不足
         if (!uploadTask.isFilePreallocated()) {
-            synchronized (uploadTask) {
+            uploadTask.lock.lock();
+            try {
                 // 双重检查：确保只有一个线程进行文件创建
                 if (!uploadTask.isFilePreallocated()) {
                     if (!Files.exists(tmpFilePath)) {
@@ -129,34 +139,63 @@ public class ResumableUploader {
                     // 标记临时文件已分配磁盘空间
                     uploadTask.markFilePreallocated();
                 }
+            } finally {
+                uploadTask.lock.unlock();
             }
         }
 
-        try (RandomAccessFile raf = new RandomAccessFile(tmpFilePath.toFile(), "rw")) {
+        /*try (RandomAccessFile raf = new RandomAccessFile(tmpFilePath.toFile(), "rw")) {
             raf.seek(offset);
-
             byte[] buffer = new byte[BUFFER_SIZE];
             int bytesRead;
             while ((bytesRead = chunkBody.read(buffer)) != -1) {
                 raf.write(buffer, 0, bytesRead);
             }
+        } catch (IOException e) {
+            throw new FileUploadException(String.format("保存文件 %s 分块 %d 失败：%s", fileId, chunkNo, e.getMessage()));
+        } finally {
+            closeQuietly(chunkBody);
+        }*/
 
+        // 采用更高效的 FileChannel 写入文件
+        try (RandomAccessFile raf = new RandomAccessFile(tmpFilePath.toFile(), "rw");
+             FileChannel channel = raf.getChannel()) {
+            channel.position(offset);
+            byte[] buffer = new byte[BUFFER_SIZE];
+            ByteBuffer byteBuffer = ByteBuffer.wrap(buffer);
+            int bytesRead;
+            while ((bytesRead = chunkBody.read(buffer)) != -1) {
+                // 设置当前有效的字节范围
+                byteBuffer.position(0);
+                byteBuffer.limit(bytesRead);
+                while (byteBuffer.hasRemaining()) {
+                    channel.write(byteBuffer);
+                }
+                // 清理以便下次读取使用
+                byteBuffer.clear();
+            }
+            // 强制将元数据和数据写入磁盘（可选，根据对数据可靠性的要求决定是否启用）
+            //channel.force(true);
         } catch (IOException e) {
             throw new FileUploadException(String.format("保存文件 %s 分块 %d 失败：%s", fileId, chunkNo, e.getMessage()));
         } finally {
             closeQuietly(chunkBody);
         }
 
-        synchronized (uploadTask) {
+        uploadTask.lock.lock();
+        try {
             // 标记分块为已上传
             uploadTask.addChunk(chunk.getChunkNo());
             // [可选]持久化文件上传状态,便于断点续传
             uploadTask.saveStatus(statusFilePath);
+        } finally {
+            uploadTask.lock.unlock();
         }
 
         // 检查是否全部完成
         if (uploadTask.isAllChunksUploaded()) {
-            synchronized (uploadTask) {
+            uploadTask.lock.lock();
+            try {
                 // 双重检查：确保只有一个线程进行文件重命名
                 if (Files.exists(tmpFilePath) && !uploadTask.isCompleted()) {
                     String targetFileName = uploadTask.fileName;
@@ -180,6 +219,8 @@ public class ResumableUploader {
                         throw new FileUploadException("文件上传完成，重命名失败：" + e.getMessage());
                     }
                 }
+            } finally {
+                uploadTask.lock.unlock();
             }
         }
 
@@ -230,6 +271,10 @@ public class ResumableUploader {
         } catch (IOException e) {
             LOG.error(">> ERROR: 删除上传的文件 <{}> 失败: {}", task.fileName, e.getMessage());
         }
+    }
+
+    public Path getUploadDir() {
+        return this.uploadDir;
     }
 
     private Path resolveTargetFilePath(String fileName, String relativePath) {
@@ -455,6 +500,7 @@ public class ResumableUploader {
         final String relativePath;
         final int totalChunks;
 
+        final ReentrantLock lock = new ReentrantLock();
         // 最后活跃时间，用于定时清理
         volatile long lastActiveTime = System.currentTimeMillis();
         // 文件是否已预分配磁盘空间
@@ -467,6 +513,7 @@ public class ResumableUploader {
             if (totalChunks < 1) {
                 throw new FileUploadException("无效的分块总数: " + totalChunks);
             }
+
             this.fileName = ResumableUploader.hasText(fileName) ? fileName : "unknown-file";
             this.relativePath = ResumableUploader.hasText(relativePath) ? relativePath : "";
             this.totalChunks = totalChunks;
@@ -500,16 +547,46 @@ public class ResumableUploader {
          * 记录此分块上传完成
          * @param chunkNo 分块编号
          */
-        synchronized void addChunk(int chunkNo) {
-            this.allChunksBitSet.set(chunkNo - 1);
+        void addChunk(int chunkNo) {
+            lock.lock();
+            try {
+                this.allChunksBitSet.set(chunkNo - 1);
+            } finally {
+                lock.unlock();
+            }
         }
 
-        synchronized boolean isChunkUploaded(int chunkNo) {
-            return chunkNo >= 1 && chunkNo <= totalChunks && this.allChunksBitSet.get(chunkNo - 1);
+        boolean isChunkUploaded(int chunkNo) {
+            if (chunkNo < 1 || chunkNo > totalChunks) {
+                return false;
+            }
+            lock.lock();
+            try {
+                return this.allChunksBitSet.get(chunkNo - 1);
+            } finally {
+                lock.unlock();
+            }
         }
 
-        synchronized boolean isAllChunksUploaded() {
-            return this.allChunksBitSet.cardinality() == totalChunks;
+        boolean isAllChunksUploaded() {
+            lock.lock();
+            try {
+                return this.allChunksBitSet.cardinality() == totalChunks;
+            } finally {
+                lock.unlock();
+            }
+        }
+
+        /**
+         * 获取已上传的分块数量
+         */
+        int getUploadedChunkCount() {
+            lock.lock();
+            try {
+                return this.allChunksBitSet.cardinality();
+            } finally {
+                lock.unlock();
+            }
         }
 
         /**
@@ -517,6 +594,7 @@ public class ResumableUploader {
          * @param statusFile 指定的记录状态文件
          */
         void saveStatus(Path statusFile) {
+            lock.lock();
             try (RandomAccessFile raf = new RandomAccessFile(statusFile.toFile(), "rw")) {
                 raf.writeUTF(fileName);
                 raf.writeUTF(relativePath);
@@ -526,6 +604,8 @@ public class ResumableUploader {
                 raf.write(bytes);
             } catch (IOException e) {
                 LOG.error(">> 无法持久化上传状态: {}", e.getMessage());
+            } finally {
+                lock.unlock();
             }
         }
 

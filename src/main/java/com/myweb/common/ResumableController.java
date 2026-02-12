@@ -1,9 +1,8 @@
 package com.myweb.common;
 
-import java.io.BufferedOutputStream;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
+import java.nio.channels.Channels;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,8 +14,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.util.unit.DataSize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -77,7 +75,7 @@ public class ResumableController implements InitializingBean, DisposableBean {
         if (chunkUploaded) {
             return ResponseEntity.ok().build();
         }
-        return ResponseEntity.notFound().build();
+        return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
     }
 
     /**
@@ -96,21 +94,81 @@ public class ResumableController implements InitializingBean, DisposableBean {
      * @param fileName 要下载的文件名（通过参数指定，更灵活）
      * @param request 请求对象（用于处理断点续传）
      * @param response 响应对象
-     * @return 流式响应体
      * @throws IOException IO异常
      */
     @GetMapping("/api/stream-download")
-    public StreamingResponseBody downloadLargeFile(
+    public void downloadLargeFile(
+            @RequestParam("filename") String fileName,
+            HttpServletRequest request,
+            HttpServletResponse response) throws IOException {
+
+        // 1. 文件名预处理与安全检查
+        String safeFileName = ResumableUploader.cleanFileName(fileName);
+        Path targetFile = Paths.get(this.uploadDir).resolve(safeFileName).normalize();
+
+        if (!Files.exists(targetFile) || !targetFile.startsWith(this.uploadDir)) {
+            response.sendError(HttpServletResponse.SC_NOT_FOUND);
+            return;
+        }
+
+        final long fileSize = Files.size(targetFile);
+        long start = 0;
+        long end = fileSize - 1;
+
+        // 2. 处理 Range 头 (例如: bytes=0-1023)
+        String range = request.getHeader(HttpHeaders.RANGE);
+        if (range != null && range.startsWith("bytes=")) {
+            response.setStatus(HttpServletResponse.SC_PARTIAL_CONTENT);
+            String[] ranges = range.substring(6).split("-");
+            start = Long.parseLong(ranges[0]);
+            if (ranges.length > 1) {
+                end = Long.parseLong(ranges[1]);
+            }
+        }
+
+        long contentLength = end - start + 1;
+
+        // 3. 设置标准的 Content-Disposition (RFC 5987)
+        String contentDisposition = ContentDisposition.attachment()
+                .filename(safeFileName, StandardCharsets.UTF_8)
+                .build().toString();
+
+        response.setHeader(HttpHeaders.CONTENT_DISPOSITION, contentDisposition);
+        response.setContentType(MediaType.APPLICATION_OCTET_STREAM_VALUE);
+        response.setHeader(HttpHeaders.CONTENT_LENGTH, String.valueOf(contentLength));
+        response.setHeader(HttpHeaders.ACCEPT_RANGES, "bytes");
+        response.setHeader(HttpHeaders.CONTENT_RANGE, "bytes " + start + "-" + end + "/" + fileSize);
+
+        // 4. 使用零拷贝或高效流传输
+        try (RandomAccessFile raf = new RandomAccessFile(targetFile.toFile(), "r");
+             FileChannel fileChannel = raf.getChannel();
+             OutputStream out = response.getOutputStream()) {
+            // 零拷贝传输 (高效)
+            fileChannel.transferTo(start, contentLength, Channels.newChannel(out));
+        }
+    }
+
+    /**
+     * 单个大文件流式下载接口
+     * @param fileName 要下载的文件名（通过参数指定，更灵活）
+     * @param request 请求对象（用于处理断点续传）
+     * @param response 响应对象
+     * @return 流式响应体
+     * @throws IOException IO异常
+     */
+    @GetMapping("/api/stream-download-old")
+    public StreamingResponseBody downloadLargeFileOld(
             @RequestParam("filename") String fileName,
             HttpServletRequest request,
             HttpServletResponse response) throws IOException {
 
         // 1. 构建文件路径并校验文件存在性
-        Path targetFile = Paths.get(this.uploadDir).resolve(fileName).normalize();
+        String safeFileName = ResumableUploader.cleanFileName(fileName);
+        Path targetFile = Paths.get(this.uploadDir).resolve(safeFileName).normalize();
         if (!Files.exists(targetFile) || !targetFile.startsWith(this.uploadDir)) {
             response.setStatus(HttpServletResponse.SC_NOT_FOUND);
             return outputStream -> {
-                String errorMsg = "文件不存在: " + fileName;
+                String errorMsg = "文件不存在: " + safeFileName;
                 outputStream.write(errorMsg.getBytes(StandardCharsets.UTF_8));
             };
         }
@@ -126,8 +184,13 @@ public class ResumableController implements InitializingBean, DisposableBean {
         response.setContentType(mimeType);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         // 处理中文文件名编码
-        String encodedFileName = new String(fileName.getBytes(StandardCharsets.UTF_8), StandardCharsets.ISO_8859_1);
-        response.setHeader(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + encodedFileName + "\"");
+        //String encodedFileName = new String(fileName.getBytes(StandardCharsets.UTF_8), StandardCharsets.ISO_8859_1);
+        //response.setHeader(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + encodedFileName + "\"");
+        // 设置标准的 Content-Disposition (RFC 5987)
+        ContentDisposition contentDisposition = ContentDisposition.attachment()
+                .filename(safeFileName, StandardCharsets.UTF_8)
+                .build();
+        response.setHeader(HttpHeaders.CONTENT_DISPOSITION, contentDisposition.toString());
         response.setHeader(HttpHeaders.CONTENT_LENGTH, String.valueOf(fileSize));
         response.setHeader(HttpHeaders.ACCEPT_RANGES, "bytes"); // 支持断点续传
         response.setHeader(HttpHeaders.CACHE_CONTROL, "no-cache, no-store, must-revalidate"); // 禁用缓存
@@ -183,7 +246,7 @@ public class ResumableController implements InitializingBean, DisposableBean {
 
             } catch (IOException e) {
                 // 捕获并包装异常，方便排查
-                throw new IOException("大文件下载失败: " + fileName + ", 原因: " + e.getMessage(), e);
+                throw new IOException("大文件下载失败: " + safeFileName + ", 原因: " + e.getMessage(), e);
             }
         };
     }
