@@ -97,6 +97,10 @@ public class ResumableUploader {
         final int chunkNo = chunk.getChunkNo();
         final long offset = chunk.getChunkStartOffset();
 
+        if (!hasText(fileId)) {
+            throw new FileUploadException("缺少有效的 fileId 参数");
+        }
+
         // 简单的超限检查
         if (this.maxFileSizeBytes > 0 && (fileSize > this.maxFileSizeBytes || offset >= this.maxFileSizeBytes)) {
             throw new FileUploadException("文件大小超限：" + this.maxFileSizeBytes);
@@ -469,7 +473,7 @@ public class ResumableUploader {
             }
             sb.append(ch);
         }
-        return sb.toString();
+        return sb.length() > 0 ? sb.toString() : "file_" + System.currentTimeMillis();
     }
 
     private void closeQuietly(InputStream body) {
