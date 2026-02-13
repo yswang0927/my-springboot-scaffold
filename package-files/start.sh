@@ -17,12 +17,31 @@ PRG_DIR="$(cd -P "$(dirname "$PRG")" && pwd)"
 # 通用函数：检查命令是否存在
 # 例如: if check_cmd_exists "wget"; then echo "wget 已安装" fi
 check_cmd_exists() {
-    local cmd="$1"
-    if command -v "$cmd" &> /dev/null; then
-        return 0
-    else
-        return 1
-    fi
+  local cmd="$1"
+  if command -v "$cmd" &> /dev/null; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+detect_os() {
+  case "$(uname -s 2>/dev/null || true)" in
+    Darwin) echo "Darwin" ;;
+    Linux) echo "Linux" ;;
+    *) echo "unsupported" ;;
+  esac
+}
+
+detect_arch() {
+  case "$(uname -m 2>/dev/null || true)" in
+    x86_64|amd64) echo "x86_64" ;;
+    arm64|aarch64) echo "arm64" ;;
+    i386|i686) echo "i386" ;;
+    armv7l|armv7) echo "armv7" ;;
+    armv6l|armv6) echo "armv6" ;;
+    *) echo "unknown" ;;
+  esac
 }
 
 # 根据PID文件检测进程是否存在
@@ -43,6 +62,9 @@ check_process() {
     return 1
   fi
 }
+
+os="$(detect_os)"
+arch="$(detect_arch)"
 
 # 应用包，搜索 app-<version>.jar包文件，获取最后一个
 APP_JAR_PATTER="app-*.jar"
