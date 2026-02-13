@@ -14,6 +14,17 @@ done
 PRG_DIR="$(cd -P "$(dirname "$PRG")" && pwd)"
 
 
+# 通用函数：检查命令是否存在
+# 例如: if check_cmd_exists "wget"; then echo "wget 已安装" fi
+check_cmd_exists() {
+    local cmd="$1"
+    if command -v "$cmd" &> /dev/null; then
+        return 0
+    else
+        return 1
+    fi
+}
+
 # 根据PID文件检测进程是否存在
 check_process() {
   local pid_file="$1"
