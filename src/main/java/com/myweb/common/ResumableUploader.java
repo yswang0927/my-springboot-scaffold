@@ -1,11 +1,10 @@
 package com.myweb.common;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.RandomAccessFile;
+import java.io.*;
 import java.nio.ByteBuffer;
+import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -17,9 +16,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 
 import com.myweb.exception.FileUploadException;
 
@@ -304,7 +308,6 @@ public class ResumableUploader {
     }
 
     private String generateTempFileName(String fileId) {
-        // 临时文件名
         return TMP_FILE_PREFIX + fileId + TMP_FILE_SUFFIX;
     }
 
@@ -494,6 +497,71 @@ public class ResumableUploader {
             }
         }
         return false;
+    }
+
+    /**
+     * 流式下载指定文件
+     * @param fileRelativePath 指定文件
+     * @param request
+     * @param response
+     */
+    public void downloadFile(String fileRelativePath,
+                             HttpServletRequest request,
+                             HttpServletResponse response) throws IOException {
+        Path targetFile = this.uploadDir.resolve(fileRelativePath).normalize();
+        // 1. 安全检查
+        if (!Files.exists(targetFile) || !targetFile.startsWith(this.uploadDir)) {
+            response.sendError(HttpServletResponse.SC_NOT_FOUND);
+            return;
+        }
+
+        final long fileSize = Files.size(targetFile);
+        long start = 0;
+        long end = fileSize - 1;
+
+        // 2. 处理 Range 头 (例如: bytes=0-1023)
+        String range = request.getHeader(HttpHeaders.RANGE);
+        if (range != null && range.startsWith("bytes=")) {
+            response.setStatus(HttpServletResponse.SC_PARTIAL_CONTENT);
+            String[] ranges = range.substring(6).split("-");
+            try {
+                start = Long.parseLong(ranges[0]);
+                if (ranges.length > 1) {
+                    end = Long.parseLong(ranges[1]);
+                }
+                // 超出文件大小则从头开始
+                if (start > fileSize - 1) {
+                    start = 0;
+                }
+                if (end > fileSize - 1) {
+                    end = fileSize - 1;
+                }
+            } catch (NumberFormatException e) {
+                LOG.warn(">> WARNING: 无效的 Range 头: {}", range);
+            }
+        }
+
+        long contentLength = end - start + 1;
+
+        // 3. 设置标准的 Content-Disposition (RFC 5987)
+        String fileName = targetFile.getFileName().toString();
+        String contentDisposition = ContentDisposition.attachment()
+                .filename(fileName, StandardCharsets.UTF_8)
+                .build().toString();
+
+        response.setHeader(HttpHeaders.CONTENT_DISPOSITION, contentDisposition);
+        response.setHeader(HttpHeaders.CONTENT_LENGTH, String.valueOf(contentLength));
+        response.setHeader(HttpHeaders.ACCEPT_RANGES, "bytes");
+        response.setHeader(HttpHeaders.CONTENT_RANGE, "bytes " + start + "-" + end + "/" + fileSize);
+        response.setContentType(MediaType.APPLICATION_OCTET_STREAM_VALUE);
+
+        // 4. 使用零拷贝或高效流传输
+        try (RandomAccessFile raf = new RandomAccessFile(targetFile.toFile(), "r");
+             FileChannel fileChannel = raf.getChannel();
+             OutputStream out = response.getOutputStream()) {
+            // 零拷贝传输 (高效)
+            fileChannel.transferTo(start, contentLength, Channels.newChannel(out));
+        }
     }
 
     // ---------------------------------
