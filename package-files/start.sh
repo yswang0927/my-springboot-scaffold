@@ -15,15 +15,35 @@ PRG_DIR="$(cd -P "$(dirname "$PRG")" && pwd)"
 
 
 # 通用函数：检查命令是否存在
-# 例如: if check_cmd_exists "wget"; then echo "wget 已安装" fi
-check_cmd_exists() {
-  local cmd="$1"
-  if command -v "$cmd" &> /dev/null; then
-    return 0
-  else
-    return 1
-  fi
+# 例如: if available "wget"; then echo "wget 已安装" fi
+available() { command -v $1 >/dev/null; }
+require() {
+    local MISSING=''
+    for TOOL in $*; do
+        if ! available $TOOL; then
+            MISSING="$MISSING $TOOL"
+        fi
+    done
+
+    echo $MISSING
 }
+# Demo
+#NEEDS=$(require curl unzip)
+#if [ -n "$NEEDS" ]; then
+#    echo "ERROR: The following tools are required but missing:"
+#    for NEED in $NEEDS; do
+#        echo "  - $NEED"
+#    done
+#    exit 1
+#fi
+
+#SUDO=
+#if [ "$(id -u)" -ne 0 ]; then
+#    if ! available sudo; then
+#        error "This script requires superuser permissions. Please re-run as root."
+#    fi
+#    SUDO="sudo"
+#fi
 
 detect_os() {
   case "$(uname -s 2>/dev/null || true)" in
@@ -66,6 +86,7 @@ check_process() {
 os="$(detect_os)"
 arch="$(detect_arch)"
 
+
 # 应用包，搜索 app-<version>.jar包文件，获取最后一个
 APP_JAR_PATTER="app-*.jar"
 APP_JAR=$(ls "$PRG_DIR/$APP_JAR_PATTER" 2>/dev/null | tail -n 1)
@@ -90,17 +111,30 @@ start() {
   else
     echo "Starting App..."
     nohup java -server \
+      --add-opens=java.base/java.io=ALL-UNNAMED \
       --add-opens=java.base/java.lang=ALL-UNNAMED \
+      --add-opens=java.base/java.lang.ref=ALL-UNNAMED \
       --add-opens=java.base/java.lang.reflect=ALL-UNNAMED \
       --add-opens=java.base/java.net=ALL-UNNAMED \
       --add-opens=java.base/java.nio=ALL-UNNAMED \
+      --add-opens=java.base/java.nio.charset=ALL-UNNAMED \
       --add-opens=java.base/java.security=ALL-UNNAMED \
+      --add-opens=java.base/java.text=ALL-UNNAMED \
+      --add-opens=java.base/java.time=ALL-UNNAMED \
       --add-opens=java.base/java.util=ALL-UNNAMED \
       --add-opens=java.base/java.util.concurrent=ALL-UNNAMED \
       --add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED \
       --add-opens=java.base/java.util.concurrent.locks=ALL-UNNAMED \
       --add-opens=java.base/jdk.internal.access=ALL-UNNAMED \
       --add-opens=java.base/jdk.internal.misc=ALL-UNNAMED \
+      --add-opens=java.base/jdk.internal.vm=ALL-UNNAMED \
+      --add-opens=java.base/sun.nio.ch=ALL-UNNAMED \
+      --add-opens=java.base/sun.nio.fs=ALL-UNNAMED \
+      --add-opens=java.base/sun.security.ssl=ALL-UNNAMED \
+      --add-opens=java.base/sun.security.util=ALL-UNNAMED \
+      --add-opens=java.base/sun.net.dns=ALL-UNNAMED \
+      --add-opens=jdk.attach/sun.tools.attach=ALL-UNNAMED \
+      --add-opens=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED \
       -XX:+UseG1GC -Xms${mem_capacity}m -Xmx${mem_capacity}m \
       -jar "$APP_JAR" --spring.config.additional-location="optional:file:${PRG_DIR}/application.properties" > "$LOG_FILE" >/dev/null 2>&1 &
     echo $! > "$APP_PID_FILE"
