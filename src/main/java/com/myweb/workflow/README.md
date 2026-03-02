@@ -31,3 +31,21 @@ FlowExecutor executor = new FlowExecutor(dagGraph, new ExecutionListener() {
 executor.execute(context);
 
 ```
+
+## 核心流程（以 Pro 版为主）
+```
+execute(context)
+  └─ resetExecutionState()          // 重置所有状态
+  └─ initializeReadyQueue()         // 入度为0的节点入队
+  └─ submitReadyTasks()             // 批量提交第一批任务
+  └─ while loop (主循环)
+       └─ executorService.poll()    // 等待任务完成
+       └─ handleTaskCompletion()    // 成功路径
+            └─ evaluateAndTriggerDownstream()  // 核心：评估下游触发
+                 ├─ isBranchSkipped?  → markNodeAsSkipped()
+                 ├─ rule.evaluate()   → readyQueue.offer()
+                 └─ remainingDeps<=0 → handleRuleMismatch()
+       └─ handleTaskFailure()       // 失败路径（含重试）
+       └─ handleTaskSkip()          // 跳过路径
+       └─ handleTaskPause()         // 暂停路径
+```
