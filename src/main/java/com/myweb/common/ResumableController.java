@@ -102,50 +102,7 @@ public class ResumableController implements InitializingBean, DisposableBean {
             HttpServletRequest request,
             HttpServletResponse response) throws IOException {
 
-        // 1. 文件名预处理与安全检查
-        String safeFileName = ResumableUploader.cleanFileName(fileName);
-        Path targetFile = Paths.get(this.uploadDir).resolve(safeFileName).normalize();
-
-        if (!Files.exists(targetFile) || !targetFile.startsWith(this.uploadDir)) {
-            response.sendError(HttpServletResponse.SC_NOT_FOUND);
-            return;
-        }
-
-        final long fileSize = Files.size(targetFile);
-        long start = 0;
-        long end = fileSize - 1;
-
-        // 2. 处理 Range 头 (例如: bytes=0-1023)
-        String range = request.getHeader(HttpHeaders.RANGE);
-        if (range != null && range.startsWith("bytes=")) {
-            response.setStatus(HttpServletResponse.SC_PARTIAL_CONTENT);
-            String[] ranges = range.substring(6).split("-");
-            start = Long.parseLong(ranges[0]);
-            if (ranges.length > 1) {
-                end = Long.parseLong(ranges[1]);
-            }
-        }
-
-        long contentLength = end - start + 1;
-
-        // 3. 设置标准的 Content-Disposition (RFC 5987)
-        String contentDisposition = ContentDisposition.attachment()
-                .filename(safeFileName, StandardCharsets.UTF_8)
-                .build().toString();
-
-        response.setHeader(HttpHeaders.CONTENT_DISPOSITION, contentDisposition);
-        response.setContentType(MediaType.APPLICATION_OCTET_STREAM_VALUE);
-        response.setHeader(HttpHeaders.CONTENT_LENGTH, String.valueOf(contentLength));
-        response.setHeader(HttpHeaders.ACCEPT_RANGES, "bytes");
-        response.setHeader(HttpHeaders.CONTENT_RANGE, "bytes " + start + "-" + end + "/" + fileSize);
-
-        // 4. 使用零拷贝或高效流传输
-        try (RandomAccessFile raf = new RandomAccessFile(targetFile.toFile(), "r");
-             FileChannel fileChannel = raf.getChannel();
-             OutputStream out = response.getOutputStream()) {
-            // 零拷贝传输 (高效)
-            fileChannel.transferTo(start, contentLength, Channels.newChannel(out));
-        }
+        this.resumableUploader.downloadFile(fileName, request, response);
     }
 
     /**
