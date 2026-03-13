@@ -148,10 +148,12 @@ public class WebMvcConfig implements WebMvcConfigurer {
         simpleModule.addDeserializer(Instant.class, new InstantDeserializer2(this.timeZone));
 
         // 处理大数据类型，防止丢失精度
+        /*
         simpleModule.addSerializer(Long.class, ToStringSerializer.instance);
         simpleModule.addSerializer(Long.TYPE, ToStringSerializer.instance);
         simpleModule.addSerializer(BigInteger.class, new ToStringSerializer(BigInteger.class));
         simpleModule.addSerializer(BigDecimal.class, new ToStringSerializer(BigDecimal.class));
+        */
 
         objectMapper.registerModules(new JavaTimeModule(), simpleModule);
     }

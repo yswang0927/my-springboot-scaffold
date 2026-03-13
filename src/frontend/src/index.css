@@ -68,6 +68,10 @@ body {
   position: absolute;
 }
 
+.fixed {
+  position: fixed;
+}
+
 .inset-0 {
   top: 0;
   right: 0;

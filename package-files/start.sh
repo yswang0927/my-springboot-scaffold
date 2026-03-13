@@ -13,6 +13,23 @@ while [ -h "$PRG" ]; do
 done
 PRG_DIR="$(cd -P "$(dirname "$PRG")" && pwd)"
 
+# echo with colors
+infoLog() {
+  time=`date "+%Y-%m-%d %H:%M:%S"`
+  echo -e "\e[39m [$time] : AIP-GATEWAY INFO    : $1 \e[0m"
+}
+successLog() {
+  time=`date "+%Y-%m-%d %H:%M:%S"`
+  echo -e "\e[32m [$time] : AIP-GATEWAY SUCCESS : $1 \e[0m"
+}
+warnLog() {
+  time=`date "+%Y-%m-%d %H:%M:%S"`
+  echo -e "\e[33m [$time] : AIP-GATEWAY WARNING : $1 \e[0m"
+}
+errorLog() {
+  time=`date "+%Y-%m-%d %H:%M:%S"`
+  echo -e "\e[31m [$time] : AIP-GATEWAY ERROR   : $1 \e[0m"
+}
 
 # 通用函数：检查命令是否存在
 # 例如: if available "wget"; then echo "wget 已安装" fi
@@ -86,14 +103,14 @@ check_process() {
 os="$(detect_os)"
 arch="$(detect_arch)"
 
-
+APP_HOME="$PRG_DIR"
 # 应用包，搜索 app-<version>.jar包文件，获取最后一个
 APP_JAR_PATTER="app-*.jar"
-APP_JAR=$(ls "$PRG_DIR/$APP_JAR_PATTER" 2>/dev/null | tail -n 1)
+APP_JAR=$(ls "$APP_HOME/$APP_JAR_PATTER" 2>/dev/null | tail -n 1)
 # 应用进程PID文件
-APP_PID_FILE="$PRG_DIR/run.pid"
+APP_PID_FILE="$APP_HOME/run.pid"
 
-LOGS_DIR="$PRG_DIR/logs"
+LOGS_DIR="$APP_HOME/logs"
 LOG_FILE="$LOGS_DIR/app.log"
 if [ ! -d "$LOGS_DIR" ]; then
   mkdir -p "$LOGS_DIR"
@@ -136,7 +153,7 @@ start() {
       --add-opens=jdk.attach/sun.tools.attach=ALL-UNNAMED \
       --add-opens=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED \
       -XX:+UseG1GC -Xms${mem_capacity}m -Xmx${mem_capacity}m \
-      -jar "$APP_JAR" --spring.config.additional-location="optional:file:${PRG_DIR}/application.properties" > "$LOG_FILE" >/dev/null 2>&1 &
+      -jar "$APP_JAR" --spring.config.additional-location="optional:file:${APP_HOME}/application.properties" > "$LOG_FILE" >/dev/null 2>&1 &
     echo $! > "$APP_PID_FILE"
 
     # 循环检测
