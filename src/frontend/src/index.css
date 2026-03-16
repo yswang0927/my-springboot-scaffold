@@ -50,7 +50,7 @@ html {
 
 body {
   font-size: 0.875rem;
-  font-family: BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Microsoft YaHei', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  font-family: BlinkMacSystemFont, Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Microsoft YaHei', 'Apple Color Emoji', 'Noto Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol';
   -webkit-text-size-adjust: 100%;
   font-feature-settings: normal;
   font-variation-settings: normal;
@@ -104,10 +104,12 @@ body {
   flex-wrap: nowrap;
 }
 
+.h-full,
 .full-height {
   height: 100%;
 }
 
+.w-full,
 .full-width {
   width: 100%;
 }
