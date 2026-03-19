@@ -1,19 +1,20 @@
-// @refresh reset
 import { createContext, useState, useContext, useCallback } from "react";
 
-import en from "../locales/en";
+import en from "@/locales/en";
+import jp from "@/locales/jp";
 
 // 1. 聚合语言包
 const dictionaries = {
     'zh-CN': {},
-    'en': en
+    'en': en,
+    'jp': jp
 };
 
 // 存储在 localStorage 中的 key 名称
 const LANG_STORAGE_KEY = 'app_l10n_lang';
 
 // 2. 创建 Context
-const L10nContext = createContext();
+const L10nContext = createContext(null);
 
 // 3. 创建 Provider 组件
 export function L10nProvider({ children, defaultLang = 'zh-CN' }) {
