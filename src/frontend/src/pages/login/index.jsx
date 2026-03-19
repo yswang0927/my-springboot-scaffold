@@ -2,18 +2,21 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import request from "@/services/request";
-
-// 1. 定义校验模式 (Schema)
-const loginSchema = z.object({
-    username: z.string()
-        .min(1, '用户名不能为空')
-        .min(3, '用户名至少需要3个字符'),
-    password: z.string()
-        .min(1, '密码不能为空')
-        .min(6, '密码长度不能少于6位'),
-});
+import { useL10n } from "@/l10n";
 
 export default function Login() {
+    const { t } = useL10n();
+
+    // 1. 定义校验模式 (Schema)
+    const loginSchema = z.object({
+        username: z.string()
+            .min(1, t('用户名不能为空'))
+            .min(3, t('用户名至少需要3个字符')),
+        password: z.string()
+            .min(1, t('密码不能为空'))
+            .min(6, t('密码长度不能少于6位')),
+    });
+
     // 2. 初始化 React Hook Form
     const {
         register,
@@ -35,7 +38,7 @@ export default function Login() {
 
         // 模拟 API 请求
         await new Promise((resolve) => setTimeout(resolve, 2000));
-        alert('登录成功！');
+        alert(t('登录成功！'));
 
         /*
         try {
@@ -72,18 +75,18 @@ export default function Login() {
 
     return (
         <div style={{ maxWidth: '300px', margin: '50px auto' }}>
-            <h2>用户登录</h2>
+            <h2>{t("用户登录")}</h2>
             <form onSubmit={handleSubmit(onSubmit)}>
                 {/* 用户名字段 */}
                 <div style={{ marginBottom: '15px' }}>
-                    <label htmlFor="login_username">用户名:</label>
+                    <label htmlFor="login_username">{t("用户名")}:</label>
                     <input {...register('username')} id="login_username" style={{ display: 'block', width: '100%' }} />
                     {errors.username && (<span style={{ color: 'red', fontSize: '12px' }}>{errors.username.message}</span>)}
                 </div>
 
                 {/* 密码字段 */}
                 <div style={{ marginBottom: '15px' }}>
-                    <label htmlFor="login_pwd">密码:</label>
+                    <label htmlFor="login_pwd">{t("密码")}:</label>
                     <input type="password" {...register('password')} id="login_pwd" style={{ display: 'block', width: '100%' }} />
                     {errors.password && (<span style={{ color: 'red', fontSize: '12px' }}>{errors.password.message}</span>)}
                 </div>
@@ -92,7 +95,7 @@ export default function Login() {
                 {errors.root?.serverError && (<p style={{ color: 'red' }}>{errors.root.serverError.message}</p>)}
 
                 <button type="submit" disabled={isSubmitting}>
-                    {isSubmitting ? '登录中...' : '登录'}
+                    {isSubmitting ? t('登录中...') : t('登录')}
                 </button>
             </form>
         </div>

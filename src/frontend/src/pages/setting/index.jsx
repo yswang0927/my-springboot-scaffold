@@ -1,9 +1,13 @@
-import usePageTitle from "@/hooks/usePageTitle.js";
+import usePageTitle from "@/hooks/usePageTitle";
+
+import { useL10n } from "@/l10n";
 
 export default function Settings() {
-    usePageTitle("设置");
+    const { t } = useL10n();
+
+    usePageTitle(t("设置"));
 
     return (
-        <h1>Settings设置页面</h1>
+        <h1>{t("设置页面")}</h1>
     );
 }
