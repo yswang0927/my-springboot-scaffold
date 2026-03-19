@@ -7,13 +7,15 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "extract-l10n": "node scripts/extract-l10n.js"
   },
   "dependencies": {
     "@ant-design/x": "^2.2.1",
     "@ant-design/x-markdown": "^2.2.1",
     "@ant-design/x-sdk": "^2.2.1",
     "@hookform/resolvers": "^5.2.2",
+    "@milkdown/crepe": "^7.19.0",
     "ahooks": "^3.9.6",
     "axios": "^1.13.2",
     "filepond": "^4.32.11",
