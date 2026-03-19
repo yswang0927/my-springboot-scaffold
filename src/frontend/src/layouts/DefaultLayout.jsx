@@ -14,6 +14,7 @@ export default function DefaultLayout() {
                         <select value={lang} onChange={(e) => setLang(e.target.value)} style={{width:"100px"}}>
                             <option value="en">{t("英语")}</option>
                             <option value="zh-CN">{t("中文")}</option>
+                            <option value="jp">{t("日语")}</option>
                         </select>
                     </li>
                     <li><Link to="/login" className="flex items-center gap-4"> <ScanFace/> {t("登录")}</Link></li>
