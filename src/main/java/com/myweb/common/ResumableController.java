@@ -114,6 +114,7 @@ public class ResumableController implements InitializingBean, DisposableBean {
      * @throws IOException IO异常
      */
     @GetMapping("/api/stream-download-old")
+    @Deprecated
     public StreamingResponseBody downloadLargeFileOld(
             @RequestParam("filename") String fileName,
             HttpServletRequest request,

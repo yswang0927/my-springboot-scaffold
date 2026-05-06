@@ -3,7 +3,6 @@ package logfile;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
-import java.util.LinkedList;
 import java.util.Objects;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 

@@ -13,6 +13,7 @@ import org.springframework.boot.web.servlet.server.ServletWebServerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
+import org.springframework.util.StringUtils;
 
 import java.io.IOException;
 
@@ -68,7 +69,12 @@ public class TomcatConfig {
             }
 
             // 当访问 http://ip:port/ 时，重定向到 http://ip:port/contextPath/
-            resp.sendRedirect(this.contextPath);
+            String redirectHomeUrl = System.getProperty("redirect.home.url");
+            if (!StringUtils.hasText(redirectHomeUrl)) {
+                redirectHomeUrl = this.contextPath;
+            }
+            resp.sendRedirect(redirectHomeUrl);
+            
             // 或者 也可以显示一个页面
             /*
             resp.setContentType("text/html;charset=UTF-8");

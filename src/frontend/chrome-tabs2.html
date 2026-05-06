@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chrome Tabs</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #ffffff;
+            overflow: hidden;
+        }
+
+        :root {
+            --bg-color: #D3E3FD;
+            --tab-height: 34px;
+            --tab-bg: transparent;
+            --tab-active-bg: #ffffff;
+            --tab-hover-bg: #f2f3f5;
+            --tab-transition: all 0.2s ease-out;
+        }
+
+        .chrome-tabs-header {
+            display: flex;
+            align-items: flex-end;
+            background-color: var(--bg-color);
+            padding: 8px 8px 0 0;
+            box-sizing: border-box;
+            width: 100%;
+            height: 46px;
+        }
+
+        .tabs-viewport {
+            overflow-x: auto;
+            scrollbar-width: none;
+            scroll-behavior: smooth;
+            flex-grow: 1;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        
+        .tabs-viewport::-webkit-scrollbar { display: none; }
+
+        .tabs-list {
+            position: relative; 
+            display: flex;
+            align-items: flex-end;
+            padding-left: 12px;
+            padding-right: 12px;
+        }
+
+        .tab {
+            --current-bg: var(--tab-bg); 
+            display: flex;
+            align-items: flex-start;
+            flex: 1 1 220px; 
+            min-width: 100px; 
+            max-width: 220px;
+            height: var(--tab-height);
+            background-color: var(--current-bg);
+            border-radius: 8px 8px 0 0;
+            position: relative;
+            margin-right: 4px; 
+            z-index: 1;
+            transition: var(--tab-transition), z-index 0s, left 0s, top 0s;
+            box-sizing: border-box;
+        }
+        .tab-inner {
+            position: relative;
+            min-width: 0;
+            height: calc(var(--tab-height) - 4px);
+            padding: 0 10px;
+            flex: 1; 
+            display: flex;
+            align-items: center;
+        }
+
+        .tab::before,
+        .tab::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            width: 12px;
+            height: 12px;
+            pointer-events: none;
+            transition: background 0.2s;
+            display: none;
+        }
+        /* 底部反向圆角 */
+        .tab::before { left: -12px; background: radial-gradient(circle at 0 0, transparent 12px, var(--current-bg) 12px); }
+        .tab::after { right: -12px; background: radial-gradient(circle at 100% 0, transparent 12px, var(--current-bg) 12px); }
+
+        .tab:hover:not(.active):not(.dragging) {
+            z-index: 2;
+        }
+        .tab:hover:not(.active):not(.dragging) .tab-inner {
+            border-radius: 8px;
+            background-color: var(--tab-hover-bg);
+        }
+        .tab.active {
+            --current-bg: var(--tab-active-bg);
+            z-index: 3;
+        }
+        .tab.active::before,
+        .tab.active::after {
+            display: block;
+        }
+
+        /* 标签之间的分割线 */
+        .tab-inner::before {
+            content: '';
+            font-size: 0;
+            position: absolute;
+            left: -3px; 
+            top: 50%;
+            transform: translateY(-50%);
+            width: 2px;
+            height: 16px;
+            background-color: rgba(0,0,0,0.1);
+            transition: opacity 0.1s ease;
+            border-radius: 2px; 
+            pointer-events: none;
+            z-index: 1;
+        }
+        .tab:first-child .tab-inner::before {
+            opacity: 0;
+        }
+        .tab.active .tab-inner::before,
+        .tab:hover .tab-inner::before {
+            opacity: 0;
+        }
+        .tab.active + .tab .tab-inner::before,
+        .tab:hover + .tab .tab-inner::before {
+            opacity: 0;
+        }
+        .tab.dragging .tab-inner::before,
+        .tab.tab-placeholder .tab-inner::before,
+        .tab.tab-placeholder + .tab .tab-inner::before {
+            opacity: 0 !important;
+        }
+
+        .tab.tab-placeholder {
+            background: transparent !important;
+            pointer-events: none;
+            z-index: 0;
+        }
+        .tab.tab-placeholder::before,
+        .tab.tab-placeholder::after {
+            display: none !important;
+        }
+        .tab.dragging {
+            position: fixed !important; 
+            z-index: 9999 !important; 
+            transition: none !important; 
+        }
+
+        .tab-title { flex-grow: 1; font-size: 12px; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; padding-right: 4px; }
+        .tab-close-btn { flex-shrink: 0; width: 16px; height: 16px; margin-right:-4px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #5f6368; cursor: pointer; pointer-events: auto; }
+        .tab-close-btn:hover { background-color: #e8eaed; color: #202124; }
+        
+        .add-tab-btn { width: 28px; height: 28px; border-radius: 50%; border: none; background: transparent; font-size: 20px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #5f6368; margin-left: 12px; margin-bottom: 4px; flex-shrink: 0; z-index: 5; }
+        .add-tab-btn:hover { background-color: #d1d4d9; }
+        .browser-content { height: calc(100vh - 46px); background-color: #ffffff; padding: 20px; position: relative; z-index: 6; }
+    </style>
+</head>
+<body>
+
+    <div class="chrome-tabs-header">
+        <div class="tabs-viewport" id="tabsViewport">
+            <div class="tabs-list" id="tabsList"></div>
+        </div>
+        <button class="add-tab-btn" id="addTabBtn">+</button>
+    </div>
+
+    <div class="browser-content">
+        <h2 id="contentTitle">Tab 内容</h2>
+    </div>
+
+<script>
+    const tabsList = document.getElementById('tabsList');
+    const tabsViewport = document.getElementById('tabsViewport');
+    const addTabBtn = document.getElementById('addTabBtn');
+    const contentTitle = document.getElementById('contentTitle');
+    
+    let tabCount = 0;
+    let isDragging = false;
+    let draggedTab = null;
+    let dragStartX = 0, dragStartY = 0;
+    let offsetX = 0; 
+    let initialTop = 0; 
+    let draggedTabWidth = 0; 
+    let lastClientX = 0; // 新增：记录上一次鼠标位置，用于判断方向
+
+    let autoScrollRaf = null;       // 存储 requestAnimationFrame 的 ID
+    let autoScrollSpeed = 0;        // 滚动速度
+    let autoScrollDirection = 0;    // 滚动带来的虚拟拖拽方向
+    
+    const placeholder = document.createElement('div');
+    placeholder.className = 'tab-placeholder tab'; 
+
+    function createTab() {
+        tabCount++;
+        const tab = document.createElement('div');
+        tab.className = 'tab';
+        tab.id = `tab-${tabCount}`;
+
+        const tabInner = document.createElement('div');
+        tabInner.className = 'tab-inner';
+        
+        const title = document.createElement('span'); 
+        title.className = 'tab-title'; 
+        title.textContent = `New Tab ${tabCount}`;
+        
+        const closeBtn = document.createElement('div'); 
+        closeBtn.className = 'tab-close-btn'; 
+        closeBtn.innerText = '×';
+        
+        tabInner.appendChild(title); 
+        tabInner.appendChild(closeBtn);
+        tab.appendChild(tabInner);
+
+        tabsList.appendChild(tab);
+        
+        bindCustomDragEvents(tab, closeBtn);
+        activateTab(tab);
+        setTimeout(() => tabsViewport.scrollTo({ left: tabsViewport.scrollWidth, behavior: 'smooth' }), 10);
+    }
+
+    function bindCustomDragEvents(tab, closeBtn) {
+        tab.addEventListener('mousedown', (e) => {
+            if (e.target === closeBtn || e.button !== 0) return;
+
+            activateTab(tab);
+            draggedTab = tab;
+            dragStartX = e.clientX;
+            dragStartY = e.clientY;
+            lastClientX = e.clientX; // 初始化上一次位置
+
+            const rect = tab.getBoundingClientRect();
+            offsetX = e.clientX - rect.left;
+            initialTop = rect.top;
+            draggedTabWidth = rect.width;
+
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        });
+
+        closeBtn.addEventListener('click', (e) => { e.stopPropagation(); removeTab(tab); });
+    }
+
+    function startAutoScroll() {
+        if (!autoScrollRaf) {
+            autoScrollRaf = requestAnimationFrame(autoScrollLoop);
+        }
+    }
+
+    function stopAutoScroll() {
+        if (autoScrollRaf) {
+            cancelAnimationFrame(autoScrollRaf);
+            autoScrollRaf = null;
+        }
+    }
+
+    function autoScrollLoop() {
+        if (!isDragging) {
+            stopAutoScroll();
+            return;
+        }
+
+        const oldScrollLeft = tabsViewport.scrollLeft;
+        // 执行滚动
+        tabsViewport.scrollLeft += autoScrollSpeed;
+
+        // 如果真的发生了滚动（没滚到尽头），主动触发位置交换判定
+        if (tabsViewport.scrollLeft !== oldScrollLeft) {
+            // 因为拖拽块 fixed 在屏幕上，容器滚动相当于拖拽块在反向移动
+            handleDragOver(autoScrollDirection); 
+        }
+
+        autoScrollRaf = requestAnimationFrame(autoScrollLoop);
+    }
+
+    function onMouseMove(e) {
+        if (!draggedTab) return;
+
+        if (!isDragging) {
+            const dx = e.clientX - dragStartX;
+            const dy = e.clientY - dragStartY;
+            if (Math.hypot(dx, dy) > 8) {
+                isDragging = true;
+                startDrag(e);
+            } else {
+                return;
+            }
+        }
+
+        // 获取鼠标移动方向 (-1 向左，1 向右，0 不动)
+        const currentClientX = e.clientX;
+        const direction = currentClientX - lastClientX;
+        lastClientX = currentClientX;
+
+        const newLeft = e.clientX - offsetX;
+        draggedTab.style.left = `${newLeft}px`;
+        draggedTab.style.top = `${initialTop}px`; 
+
+        if (direction !== 0) {
+            handleDragOver(direction);
+        }
+
+        // === 新增：边缘检测与自动滚动 ===
+        const viewportRect = tabsViewport.getBoundingClientRect();
+        const edgeThreshold = 40; // 距离边缘 40px 开始触发滚动
+        const maxSpeed = 10;       // 基础滚动速度
+
+        // 检测左边缘
+        if (e.clientX < viewportRect.left + edgeThreshold) {
+            autoScrollDirection = -1;
+            // 越靠近边缘，速度越快 (可选体验优化)
+            const ratio = (viewportRect.left + edgeThreshold - e.clientX) / edgeThreshold;
+            autoScrollSpeed = -maxSpeed * ratio;
+            startAutoScroll();
+        } 
+        // 检测右边缘
+        else if (e.clientX > viewportRect.right - edgeThreshold) {
+            autoScrollDirection = 1;
+            const ratio = (e.clientX - (viewportRect.right - edgeThreshold)) / edgeThreshold;
+            autoScrollSpeed = maxSpeed * ratio;
+            startAutoScroll();
+        } 
+        // 不在边缘，停止滚动
+        else {
+            stopAutoScroll();
+        }
+    }
+
+    function startDrag(e) {
+        tabsList.insertBefore(placeholder, draggedTab);
+        draggedTab.classList.add('dragging');
+        draggedTab.style.width = `${draggedTabWidth}px`; 
+        draggedTab.style.left = `${e.clientX - offsetX}px`;
+        draggedTab.style.top = `${initialTop}px`;
+    }
+
+    function getPrevPassiveTab(el) {
+        let curr = el.previousElementSibling;
+        while (curr && curr.classList.contains('dragging')) { curr = curr.previousElementSibling; }
+        return curr;
+    }
+    function getNextPassiveTab(el) {
+        let curr = el.nextElementSibling;
+        while (curr && curr.classList.contains('dragging')) { curr = curr.nextElementSibling; }
+        return curr;
+    }
+
+    // --- 防止死循环：引入方向判定逻辑 ---
+    function handleDragOver(direction) {
+        const draggedRect = draggedTab.getBoundingClientRect();
+        const listRect = tabsList.getBoundingClientRect();
+        
+        let shouldSwap = false;
+        
+        // 1. 初步预判：是否真的需要执行交换逻辑
+        const pTab = getPrevPassiveTab(placeholder);
+        const nTab = getNextPassiveTab(placeholder);
+
+        if (direction < 0 && pTab) {
+            const pCenter = listRect.left + pTab.offsetLeft + pTab.offsetWidth / 2;
+            if (draggedRect.left < pCenter) shouldSwap = true;
+        } else if (direction > 0 && nTab) {
+            const nCenter = listRect.left + nTab.offsetLeft + nTab.offsetWidth / 2;
+            if (draggedRect.right > nCenter) shouldSwap = true;
+        }
+
+        // 如果不需要交换，直接返回，不打断现有的过渡动画
+        if (!shouldSwap) return;
+
+        const passiveTabs = [...tabsList.querySelectorAll('.tab:not(.dragging):not(.tab-placeholder)')];
+        
+        // FLIP 第一步：静止并记录原始位置
+        passiveTabs.forEach(tab => {
+            //tab.oldLeft = tab.getBoundingClientRect().left;
+            tab.oldLeft = tab.offsetLeft;
+            tab.style.transition = 'none';
+        });
+
+        // 2. 执行交换（仅执行当前方向的判定，绝对不会反向判定，打破死循环）
+        while (true) {
+            let swappedThisIteration = false;
+            const prevTab = getPrevPassiveTab(placeholder);
+            const nextTab = getNextPassiveTab(placeholder);
+
+            if (direction < 0 && prevTab) {
+                const prevCenter = listRect.left + prevTab.offsetLeft + prevTab.offsetWidth / 2;
+                if (draggedRect.left < prevCenter) {
+                    tabsList.insertBefore(placeholder, prevTab);
+                    swappedThisIteration = true;
+                }
+            } else if (direction > 0 && nextTab) {
+                const nextCenter = listRect.left + nextTab.offsetLeft + nextTab.offsetWidth / 2;
+                if (draggedRect.right > nextCenter) {
+                    tabsList.insertBefore(nextTab, placeholder); // 等价于 placeholder 插在 nextTab 后面
+                    swappedThisIteration = true;
+                }
+            }
+
+            if (!swappedThisIteration) break;
+        }
+
+        // FLIP 第二步：应用动画
+        passiveTabs.forEach(tab => {
+            //const newLeft = tab.getBoundingClientRect().left;
+            const newLeft = tab.offsetLeft;
+            const deltaX = tab.oldLeft - newLeft;
+            if (deltaX !== 0) {
+                tab.style.transform = `translateX(${deltaX}px)`;
+                tab.offsetHeight; // 强制重排
+                tab.style.transition = 'var(--tab-transition)';
+                tab.style.transform = ''; 
+            } else {
+                tab.style.transition = 'var(--tab-transition)';
+                tab.style.transform = ''; 
+            }
+        });
+    }
+
+    function onMouseUp(e) {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+
+        stopAutoScroll(); // === 新增：松开鼠标时停止自动滚动 ===
+
+        if (!isDragging) { draggedTab = null; return; }
+
+        const placeholderRect = placeholder.getBoundingClientRect();
+        draggedTab.style.transition = 'left 0.2s cubic-bezier(0.2, 0, 0, 1), top 0.2s cubic-bezier(0.2, 0, 0, 1)';
+        draggedTab.style.left = `${placeholderRect.left}px`;
+        draggedTab.style.top = `${placeholderRect.top}px`;
+
+        const tabToRestore = draggedTab; 
+        
+        setTimeout(() => {
+            if (placeholder.parentElement) {
+                tabsList.insertBefore(tabToRestore, placeholder);
+                placeholder.remove();
+            }
+            tabToRestore.classList.remove('dragging');
+            tabToRestore.style.transition = '';
+            tabToRestore.style.left = '';
+            tabToRestore.style.top = '';
+            tabToRestore.style.width = '';
+        }, 200);
+
+        isDragging = false; draggedTab = null;
+    }
+
+    function activateTab(tabToActivate) {
+        const currentActive = document.querySelector('.tab.active');
+        if (currentActive) currentActive.classList.remove('active');
+        tabToActivate.classList.add('active');
+        contentTitle.textContent = `${tabToActivate.querySelector('.tab-title').textContent} 内容`;
+        
+        setTimeout(() => {
+            const tabRect = tabToActivate.getBoundingClientRect();
+            const viewportRect = tabsViewport.getBoundingClientRect();
+            // +16 左边多进入些视口
+            if (tabRect.left-16 < viewportRect.left) {
+                tabsViewport.scrollBy({ left: tabRect.left - viewportRect.left - tabRect.width/2, behavior: 'smooth' });
+            }
+            // + 12 = tab::after-size右下弧形圆角的宽度, 保证整个tab进入视口
+            else if ((tabRect.right + 12) > viewportRect.right) {
+                tabsViewport.scrollBy({ left: tabRect.right - viewportRect.right + tabRect.width/2, behavior: 'smooth' });
+            }
+        }, 10);
+    }
+
+    function removeTab(tabToRemove) {
+        const isActive = tabToRemove.classList.contains('active');
+        const prevTab = tabToRemove.previousElementSibling;
+        const nextTab = tabToRemove.nextElementSibling;
+        tabToRemove.remove();
+        if (isActive) { 
+            if (nextTab) activateTab(nextTab); 
+            else if (prevTab) activateTab(prevTab); 
+            else contentTitle.textContent = "所有标签均已关闭"; 
+        }
+    }
+
+    // --- 辅助函数：获取当前所有真实的标签页（排除占位符和拖拽中的副本） ---
+    function getValidTabs() {
+        return Array.from(tabsList.querySelectorAll('.tab:not(.tab-placeholder):not(.dragging)'));
+    }
+
+    // 1. 关闭 (复用你原有的 removeTab 即可，或者用这个包装一下)
+    function closeTargetTab(targetTab) {
+        removeTab(targetTab);
+    }
+
+    // 2. 关闭其他标签
+    function closeOtherTabs(targetTab) {
+        // 强制激活当前目标标签，防止焦点丢失
+        activateTab(targetTab); 
+        
+        getValidTabs().forEach(tab => {
+            if (tab !== targetTab) {
+                tab.remove();
+            }
+        });
+    }
+
+    // 3. 关闭左侧标签
+    function closeTabsToLeft(targetTab) {
+        const tabs = getValidTabs();
+        const targetIndex = tabs.indexOf(targetTab);
+        let activeTabRemoved = false;
+
+        // 遍历并删除目标索引之前的标签
+        for (let i = 0; i < targetIndex; i++) {
+            if (tabs[i].classList.contains('active')) activeTabRemoved = true;
+            tabs[i].remove();
+        }
+        
+        // 如果当前处于激活状态的标签被关掉了，就把焦点转移到目标标签上
+        if (activeTabRemoved) activateTab(targetTab);
+    }
+
+    // 4. 关闭右侧标签
+    function closeTabsToRight(targetTab) {
+        const tabs = getValidTabs();
+        const targetIndex = tabs.indexOf(targetTab);
+        let activeTabRemoved = false;
+
+        // 遍历并删除目标索引之后的标签
+        for (let i = targetIndex + 1; i < tabs.length; i++) {
+            if (tabs[i].classList.contains('active')) activeTabRemoved = true;
+            tabs[i].remove();
+        }
+
+        // 同理，处理焦点转移
+        if (activeTabRemoved) activateTab(targetTab);
+    }
+
+    // 5. 关闭所有标签
+    function closeAllTabs() {
+        getValidTabs().forEach(tab => tab.remove());
+        // 触发空状态
+        contentTitle.textContent = "所有标签均已关闭";
+    }
+
+    tabsViewport.addEventListener('wheel', (e) => { 
+        if (e.deltaY !== 0) { 
+            e.preventDefault(); 
+            tabsViewport.scrollLeft += e.deltaY; 
+        } 
+    }, { passive: false });
+
+    addTabBtn.addEventListener('click', () => createTab());
+    for(let i=0; i<6; i++) createTab();
+</script>
+
+<script>
+class ScrollTabs {
+    constructor(options) {
+        this.viewport = options.tabsViewportEle;
+        this.list = options.tabsListEle;
+        
+        // 配置项
+        this.tabSelector = options.tabSelector || '.tab';
+        this.closeBtnSelector = options.closeSelector || '.tab-close-btn';
+        this.activeClass = options.activeClass || 'active';
+        
+        // 拖拽状态
+        this.isDragging = false;
+        this.draggedTab = null;
+        this.dragStartX = 0;
+        this.dragStartY = 0;
+        this.offsetX = 0;
+        this.initialTop = 0;
+        this.draggedTabWidth = 0;
+        this.lastClientX = 0;
+
+        // 自动滚动状态
+        this.autoScrollRaf = null;
+        this.autoScrollSpeed = 0;
+        this.autoScrollDirection = 0;
+        this.exactScrollLeft = 0;
+
+        // 内部占位符 DOM
+        this.placeholder = document.createElement('div');
+        this.placeholder.className = 'tab-placeholder tab';
+        this.placeholder.style.flex = 'none'; // 防止 flexbox 挤压
+
+        // 预先绑定 this，用于事件监听的添加和移除
+        this._onMouseDown = this.onMouseDown.bind(this);
+        this._onMouseMove = this.onMouseMove.bind(this);
+        this._onMouseUp = this.onMouseUp.bind(this);
+        this._onWheel = this.onWheel.bind(this);
+        this._autoScrollLoop = this.autoScrollLoop.bind(this);
+    }
+
+    // ==========================================
+    // 生命周期与初始化 API
+    // ==========================================
+    init() {
+        // 使用事件代理，绑定在父容器上
+        this.list.addEventListener('mousedown', this._onMouseDown);
+        this.viewport.addEventListener('wheel', this._onWheel, { passive: false });
+    }
+
+    destroy() {
+        this.list.removeEventListener('mousedown', this._onMouseDown);
+        this.viewport.removeEventListener('wheel', this._onWheel);
+        document.removeEventListener('mousemove', this._onMouseMove);
+        document.removeEventListener('mouseup', this._onMouseUp);
+        this.stopAutoScroll();
+    }
+
+    // =========================
+    // 标签页操作 API (关闭相关)
+    // =========================
+    getValidTabs() {
+        // 排除占位符和拖拽中的克隆体
+        return Array.from(this.list.querySelectorAll(`${this.tabSelector}:not(.tab-placeholder):not(.dragging)`));
+    }
+
+    getActiveTab() {
+        return this.list.querySelector(`${this.tabSelector}.${this.activeClass}`);
+    }
+
+    activateTab(tab) {
+        if (!tab) return;
+        const currentActive = this.getActiveTab();
+        if (currentActive) {
+            currentActive.classList.remove(this.activeClass);
+        }
+        tab.classList.add(this.activeClass);
+        
+        // 滚动到可视区域逻辑
+        setTimeout(() => {
+            const tabRect = tab.getBoundingClientRect();
+            const viewportRect = this.viewport.getBoundingClientRect();
+            if (tabRect.left - 16 <= viewportRect.left) {
+                this.viewport.scrollBy({ left: tabRect.left - viewportRect.left - tabRect.width, behavior: 'smooth' });
+            } else if ((tabRect.right + 12) >= viewportRect.right) {
+                this.viewport.scrollBy({ left: tabRect.right - viewportRect.right + tabRect.width, behavior: 'smooth' });
+            }
+        }, 10);
+    }
+
+    closeTab(tab) {
+        if (!tab) return;
+        const isActive = tab.classList.contains(this.activeClass);
+        const prevTab = tab.previousElementSibling;
+        const nextTab = tab.nextElementSibling;
+        tab.remove();
+
+        if (isActive) {
+            if (nextTab && nextTab.matches(this.tabSelector)) {
+                this.activateTab(nextTab);
+            } else if (prevTab && prevTab.matches(this.tabSelector)) {
+                this.activateTab(prevTab);
+            }
+        }
+    }
+
+    closeAll() {
+        this.getValidTabs().forEach(tab => tab.remove());
+    }
+
+    closeOthers() {
+        const activeTab = this.getActiveTab();
+        if (!activeTab) return;
+        this.getValidTabs().forEach(tab => {
+            if (tab !== activeTab) tab.remove();
+        });
+        this.activateTab(activeTab);
+    }
+
+    closeBeforeActivated() {
+        const activeTab = this.getActiveTab();
+        if (!activeTab) return;
+        const tabs = this.getValidTabs();
+        const targetIndex = tabs.indexOf(activeTab);
+        
+        for (let i = 0; i < targetIndex; i++) {
+            tabs[i].remove();
+        }
+        this.activateTab(activeTab);
+    }
+
+    closeAfterActivated() {
+        const activeTab = this.getActiveTab();
+        if (!activeTab) return;
+        const tabs = this.getValidTabs();
+        const targetIndex = tabs.indexOf(activeTab);
+        
+        for (let i = targetIndex + 1; i < tabs.length; i++) {
+            tabs[i].remove();
+        }
+        this.activateTab(activeTab);
+    }
+
+    // ==========================================
+    // 内部事件处理与拖拽逻辑 (Private-like)
+    // ==========================================
+    onWheel(e) {
+        if (e.deltaY !== 0) {
+            e.preventDefault();
+            this.viewport.scrollLeft += e.deltaY;
+        }
+    }
+
+    onMouseDown(e) {
+        if (e.button !== 0) return; 
+
+        const closeBtn = e.target.closest(this.closeBtnSelector);
+        if (closeBtn) {
+            const tabToClose = closeBtn.closest(this.tabSelector);
+            if (tabToClose) {
+                this.closeTab(tabToClose);
+            }
+            return;
+        }
+
+        // 处理标签拖拽
+        const tab = e.target.closest(this.tabSelector);
+        if (!tab) return;
+
+        this.activateTab(tab);
+        this.draggedTab = tab;
+        this.dragStartX = e.clientX;
+        this.dragStartY = e.clientY;
+        this.lastClientX = e.clientX;
+
+        const rect = tab.getBoundingClientRect();
+        this.offsetX = e.clientX - rect.left;
+        this.initialTop = rect.top;
+        this.draggedTabWidth = rect.width;
+
+        document.addEventListener('mousemove', this._onMouseMove);
+        document.addEventListener('mouseup', this._onMouseUp);
+    }
+
+    startDrag(e) {
+        this.placeholder.style.width = `${this.draggedTabWidth}px`;
+        this.placeholder.style.minWidth = `${this.draggedTabWidth}px`;
+        this.placeholder.style.maxWidth = `${this.draggedTabWidth}px`;
+
+        this.list.insertBefore(this.placeholder, this.draggedTab);
+        this.draggedTab.classList.add('dragging');
+        this.draggedTab.style.width = `${this.draggedTabWidth}px`;
+        this.draggedTab.style.left = `${e.clientX - this.offsetX}px`;
+        this.draggedTab.style.top = `${this.initialTop}px`;
+    }
+
+    onMouseMove(e) {
+        if (!this.draggedTab) return;
+
+        if (!this.isDragging) {
+            const dx = e.clientX - this.dragStartX;
+            const dy = e.clientY - this.dragStartY;
+            if (Math.hypot(dx, dy) > 8) {
+                this.isDragging = true;
+                this.startDrag(e);
+            } else {
+                return;
+            }
+        }
+
+        const currentClientX = e.clientX;
+        const direction = currentClientX - this.lastClientX;
+        this.lastClientX = currentClientX;
+
+        const newLeft = e.clientX - this.offsetX;
+        this.draggedTab.style.left = `${newLeft}px`;
+        this.draggedTab.style.top = `${this.initialTop}px`;
+
+        const viewportRect = this.viewport.getBoundingClientRect();
+        const edgeThreshold = 60;
+        const maxSpeed = 12;
+        let isAtEdge = false;
+
+        if (e.clientX < viewportRect.left + edgeThreshold) {
+            this.autoScrollDirection = -1;
+            const ratio = (viewportRect.left + edgeThreshold - e.clientX) / edgeThreshold;
+            this.autoScrollSpeed = -maxSpeed * Math.max(0.2, ratio);
+            isAtEdge = true;
+            this.startAutoScroll();
+        } else if (e.clientX > viewportRect.right - edgeThreshold) {
+            this.autoScrollDirection = 1;
+            const ratio = (e.clientX - (viewportRect.right - edgeThreshold)) / edgeThreshold;
+            this.autoScrollSpeed = maxSpeed * Math.max(0.2, ratio);
+            isAtEdge = true;
+            this.startAutoScroll();
+        } else {
+            this.stopAutoScroll();
+        }
+
+        if (!isAtEdge && direction !== 0) {
+            this.handleDragOver(direction);
+        }
+    }
+
+    startAutoScroll() {
+        if (!this.autoScrollRaf) {
+            this.exactScrollLeft = this.viewport.scrollLeft;
+            this.autoScrollRaf = requestAnimationFrame(this._autoScrollLoop);
+        }
+    }
+
+    stopAutoScroll() {
+        if (this.autoScrollRaf) {
+            cancelAnimationFrame(this.autoScrollRaf);
+            this.autoScrollRaf = null;
+        }
+    }
+
+    autoScrollLoop() {
+        if (!this.isDragging) {
+            this.stopAutoScroll();
+            return;
+        }
+
+        const oldScrollLeft = this.viewport.scrollLeft;
+        this.exactScrollLeft += this.autoScrollSpeed;
+        this.viewport.scrollLeft = this.exactScrollLeft;
+
+        if (this.viewport.scrollLeft !== oldScrollLeft) {
+            this.handleDragOver(this.autoScrollDirection);
+        }
+
+        this.autoScrollRaf = requestAnimationFrame(this._autoScrollLoop);
+    }
+
+    getPrevPassiveTab(el) {
+        let curr = el.previousElementSibling;
+        while (curr && curr.classList.contains('dragging')) { 
+            curr = curr.previousElementSibling; 
+        }
+        return curr;
+    }
+
+    getNextPassiveTab(el) {
+        let curr = el.nextElementSibling;
+        while (curr && curr.classList.contains('dragging')) { 
+            curr = curr.nextElementSibling; 
+        }
+        return curr;
+    }
+
+    handleDragOver(direction) {
+        const draggedRect = this.draggedTab.getBoundingClientRect();
+        const listRect = this.list.getBoundingClientRect();
+        
+        let shouldSwap = false;
+        const pTab = this.getPrevPassiveTab(this.placeholder);
+        const nTab = this.getNextPassiveTab(this.placeholder);
+
+        if (direction < 0 && pTab) {
+            const pCenter = listRect.left + pTab.offsetLeft + pTab.offsetWidth / 2;
+            if (draggedRect.left < pCenter) {
+                shouldSwap = true;
+            }
+        } else if (direction > 0 && nTab) {
+            const nCenter = listRect.left + nTab.offsetLeft + nTab.offsetWidth / 2;
+            if (draggedRect.right > nCenter) {
+                shouldSwap = true;
+            }
+        }
+
+        if (!shouldSwap) return;
+
+        const passiveTabs = this.getValidTabs();
+        
+        // FLIP 第 1 步
+        passiveTabs.forEach(tab => {
+            tab.oldLeft = tab.offsetLeft;
+            tab.style.transition = 'none';
+        });
+
+        while (true) {
+            let swappedThisIteration = false;
+            const prevTab = this.getPrevPassiveTab(this.placeholder);
+            const nextTab = this.getNextPassiveTab(this.placeholder);
+
+            if (direction < 0 && prevTab) {
+                const prevCenter = listRect.left + prevTab.offsetLeft + prevTab.offsetWidth / 2;
+                if (draggedRect.left < prevCenter) {
+                    this.list.insertBefore(this.placeholder, prevTab);
+                    swappedThisIteration = true;
+                }
+            } else if (direction > 0 && nextTab) {
+                const nextCenter = listRect.left + nextTab.offsetLeft + nextTab.offsetWidth / 2;
+                if (draggedRect.right > nextCenter) {
+                    this.list.insertBefore(nextTab, this.placeholder);
+                    swappedThisIteration = true;
+                }
+            }
+            if (!swappedThisIteration) break;
+        }
+
+        // FLIP 第 2 步
+        passiveTabs.forEach(tab => {
+            const newLeft = tab.offsetLeft;
+            const deltaX = tab.oldLeft - newLeft;
+            if (deltaX !== 0) {
+                tab.style.transform = `translateX(${deltaX}px)`;
+                tab.offsetHeight; 
+                tab.style.transition = 'var(--tab-transition)';
+                tab.style.transform = '';
+            } else {
+                tab.style.transition = 'var(--tab-transition)';
+                tab.style.transform = '';
+            }
+        });
+    }
+
+    onMouseUp(e) {
+        document.removeEventListener('mousemove', this._onMouseMove);
+        document.removeEventListener('mouseup', this._onMouseUp);
+        
+        this.stopAutoScroll();
+
+        if (!this.isDragging) { 
+            this.draggedTab = null; 
+            return; 
+        }
+
+        const placeholderRect = this.placeholder.getBoundingClientRect();
+        this.draggedTab.style.transition = 'left 0.2s cubic-bezier(0.2, 0, 0, 1), top 0.2s cubic-bezier(0.2, 0, 0, 1)';
+        this.draggedTab.style.left = `${placeholderRect.left}px`;
+        this.draggedTab.style.top = `${placeholderRect.top}px`;
+
+        const tabToRestore = this.draggedTab;
+        
+        setTimeout(() => {
+            if (this.placeholder.parentElement) {
+                this.list.insertBefore(tabToRestore, this.placeholder);
+                this.placeholder.remove();
+            }
+            tabToRestore.classList.remove('dragging');
+            tabToRestore.style.transition = '';
+            tabToRestore.style.left = '';
+            tabToRestore.style.top = '';
+            tabToRestore.style.width = '';
+        }, 200);
+
+        this.isDragging = false; 
+        this.draggedTab = null;
+    }
+}
+</script>
+
+</body>
+</html>

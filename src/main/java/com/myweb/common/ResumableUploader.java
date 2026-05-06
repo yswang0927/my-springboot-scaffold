@@ -502,12 +502,13 @@ public class ResumableUploader {
     /**
      * 流式下载指定文件
      * @param fileRelativePath 指定文件
-     * @param request
-     * @param response
+     * @param request HttpServletRequest
+     * @param response HttpServletResponse
      */
     public void downloadFile(String fileRelativePath,
                              HttpServletRequest request,
                              HttpServletResponse response) throws IOException {
+
         Path targetFile = this.uploadDir.resolve(fileRelativePath).normalize();
         // 1. 安全检查
         if (!Files.exists(targetFile) || !targetFile.startsWith(this.uploadDir)) {
@@ -516,6 +517,11 @@ public class ResumableUploader {
         }
 
         final long fileSize = Files.size(targetFile);
+        String mimeType = Files.probeContentType(targetFile);
+        if (mimeType == null) {
+            mimeType = MediaType.APPLICATION_OCTET_STREAM_VALUE;
+        }
+
         long start = 0;
         long end = fileSize - 1;
 
@@ -541,19 +547,22 @@ public class ResumableUploader {
             }
         }
 
-        long contentLength = end - start + 1;
+        final long contentLength = end - start + 1;
 
         // 3. 设置标准的 Content-Disposition (RFC 5987)
-        String fileName = targetFile.getFileName().toString();
-        String contentDisposition = ContentDisposition.attachment()
+        final String fileName = targetFile.getFileName().toString();
+        final String contentDisposition = ContentDisposition.attachment()
                 .filename(fileName, StandardCharsets.UTF_8)
                 .build().toString();
 
+        response.setContentType(mimeType);
         response.setHeader(HttpHeaders.CONTENT_DISPOSITION, contentDisposition);
         response.setHeader(HttpHeaders.CONTENT_LENGTH, String.valueOf(contentLength));
         response.setHeader(HttpHeaders.ACCEPT_RANGES, "bytes");
         response.setHeader(HttpHeaders.CONTENT_RANGE, "bytes " + start + "-" + end + "/" + fileSize);
-        response.setContentType(MediaType.APPLICATION_OCTET_STREAM_VALUE);
+        response.setHeader(HttpHeaders.CACHE_CONTROL, "no-cache, no-store, must-revalidate"); // 禁用缓存
+        response.setHeader(HttpHeaders.PRAGMA, "no-cache");
+        response.setHeader(HttpHeaders.EXPIRES, "0");
 
         // 4. 使用零拷贝或高效流传输
         try (RandomAccessFile raf = new RandomAccessFile(targetFile.toFile(), "r");

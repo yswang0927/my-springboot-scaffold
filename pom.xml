@@ -277,20 +277,24 @@
 										<replacevalue><![CDATA[<html xmlns:th="http://www.thymeleaf.org">]]></replacevalue>
 									</replacefilter>
 									<replacefilter>
+										<replacetoken><![CDATA[</head>]]></replacetoken>
+										<replacevalue><![CDATA[<script th:inline="javascript">window.APP_BASE_URL="[(${contextPath})]";</script></head>]]></replacevalue>
+									</replacefilter>
+									<replacefilter>
+										<replacetoken><![CDATA[src="/]]></replacetoken>
+										<replacevalue><![CDATA[src="]]></replacevalue>
+									</replacefilter>
+									<replacefilter>
+										<replacetoken><![CDATA[href="/]]></replacetoken>
+										<replacevalue><![CDATA[href="]]></replacevalue>
+									</replacefilter>
+									<replacefilter>
+										<replacetoken><![CDATA[<script>]]></replacetoken>
+										<replacevalue><![CDATA[<script th:inline="javascript">]]></replacevalue>
+									</replacefilter>
+									<replacefilter>
 										<replacetoken><![CDATA[<head>]]></replacetoken>
 										<replacevalue><![CDATA[<head><base th:href="@{/}">]]></replacevalue>
-									</replacefilter>
-									<replacefilter>
-										<replacetoken><![CDATA[</head>]]></replacetoken>
-										<replacevalue><![CDATA[<script th:inline="javascript">window.APP_BASE_URL="[(@{/})]";</script></head>]]></replacevalue>
-									</replacefilter>
-									<replacefilter>
-										<replacetoken><![CDATA[ src="/]]></replacetoken>
-										<replacevalue><![CDATA[ src="]]></replacevalue>
-									</replacefilter>
-									<replacefilter>
-										<replacetoken><![CDATA[ href="/]]></replacetoken>
-										<replacevalue><![CDATA[ href="]]></replacevalue>
 									</replacefilter>
 								</replace>
 							</target>

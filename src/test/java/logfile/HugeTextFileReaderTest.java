@@ -3,9 +3,9 @@ package logfile;
 import java.io.File;
 import java.io.IOException;
 
-public class Test {
+public class HugeTextFileReaderTest {
     public static void main(String[] args) throws IOException {
-        File file = new File(System.getProperty("user.dir"), "logs/application.log");
+        File file = new File(System.getProperty("user.dir"), "logs/log.log");
         try(HugeTextFileReader reader = new HugeTextFileReader(file.getAbsolutePath())) {
 
             long stime = System.currentTimeMillis();
