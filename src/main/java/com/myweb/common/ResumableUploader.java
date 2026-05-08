@@ -4,6 +4,7 @@ import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
+import java.nio.channels.WritableByteChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -33,16 +34,16 @@ import com.myweb.exception.FileUploadException;
 public class ResumableUploader {
     private static final Logger LOG = LoggerFactory.getLogger(ResumableUploader.class);
 
-    // 定义过期时间：5小时
-    private static final long EXPIRE_TIME_MILLIS = 5 * 3600 * 1000;
-    // 定时清理任务间隔：30分钟
-    private static final int CLEANUP_INTERVAL = 30;
-    private static final TimeUnit CLEANUP_INTERVAL_TIMEUNIT = TimeUnit.MINUTES;
-
     private static final int BUFFER_SIZE = 8192;
     private static final String TMP_FILE_PREFIX = ".rsm-";
     private static final String TMP_FILE_SUFFIX = ".tmp";
     private static final String TMP_STATUS_FILE_SUFFIX = ".upload";
+
+    // 定义过期时间：2小时
+    private static final long EXPIRE_TIME_MILLIS = 2 * 3600 * 1000;
+    // 定时清理任务间隔：30分钟
+    private static final int CLEANUP_INTERVAL = 30;
+    private static final TimeUnit CLEANUP_INTERVAL_TIMEUNIT = TimeUnit.MINUTES;
 
     private final AtomicBoolean cleanupTaskStarted = new AtomicBoolean(false);
     private ScheduledExecutorService cleanerExecutor;
@@ -95,11 +96,17 @@ public class ResumableUploader {
             throw e;
         }
 
-        final String fileId = cleanFileId(chunk.getFileId());
+        String fileId = cleanFileId(chunk.getFileId());
         final String fileName = cleanFileName(chunk.getFileName());
         final long fileSize = chunk.getFileSize();
+        final String fileMd5 = chunk.getFileMD5();
         final int chunkNo = chunk.getChunkNo();
         final long offset = chunk.getChunkStartOffset();
+
+        // 如果存在文件MD5值,则使用文件MD5值作为fileId以支持断点续传
+        if (hasText(fileMd5)) {
+            fileId = fileMd5;
+        }
 
         if (!hasText(fileId)) {
             throw new FileUploadException("缺少有效的 fileId 参数");
@@ -117,6 +124,7 @@ public class ResumableUploader {
         // 检查分块是否已上传，避免重复写入
         if (uploadTask.isChunkUploaded(chunkNo)) {
             closeQuietly(chunkBody);
+            System.out.println(">>> 块 <"+ chunkNo +"> 已上传过, 跳过");
             return uploadTask.isAllChunksUploaded();
         }
 
@@ -445,7 +453,7 @@ public class ResumableUploader {
                         Files.deleteIfExists(statusPath);
                     }
                 } else {
-                    Files.deleteIfExists(statusPath); // 孤儿配置文件，清理掉
+                    Files.deleteIfExists(statusPath); // 孤儿状态文件，清理掉
                 }
             }
 
@@ -567,9 +575,10 @@ public class ResumableUploader {
         // 4. 使用零拷贝或高效流传输
         try (RandomAccessFile raf = new RandomAccessFile(targetFile.toFile(), "r");
              FileChannel fileChannel = raf.getChannel();
-             OutputStream out = response.getOutputStream()) {
+             OutputStream out = response.getOutputStream();
+             WritableByteChannel writeChannel = Channels.newChannel(out)) {
             // 零拷贝传输 (高效)
-            fileChannel.transferTo(start, contentLength, Channels.newChannel(out));
+            fileChannel.transferTo(start, contentLength, writeChannel);
         }
     }
 

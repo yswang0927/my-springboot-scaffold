@@ -25,13 +25,14 @@ export default function ResumableUploadPage() {
             const resum = resumableRef.current = new Resumable({
                 url: `${base_url}/api/resumable-upload`,
                 testUrl: `${base_url}/api/resumable-upload-test`,
-                testChunks: false,
+                testChunks: true,
                 revertUrl: `${base_url}/api/resumable-upload-revert`, // 撤销已上传的文件接口URL
                 autoUpload: false,
                 chunkSize: 5 * 1024 * 1024,
                 forceChunkSize: true,
                 simultaneousUploads: 5,
                 directoryUpload: false,
+                resumableUpload: true, // 是否开启断点续传，它需要服务器端配合支持，开启后，前端会进行文件的MD5计算，对于大文件MD5计算过程会比较慢
                 maxFileSize: 5 * 1024 * 1024 * 1024, // 5GB
             });
             resum.on('fileSuccess', (file) => {

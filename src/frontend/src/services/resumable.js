@@ -1,6 +1,7 @@
 /*
 * MIT Licensed
 * https://github.com/23/resumable.js
+* https://www.resumablejs.com/guides/retries-and-resume/
 *
 * - jack: 增加内置UI和断点续传等
 */
@@ -33,20 +34,20 @@ const Resumable = window.Resumable = function (opts) {
         url: '',
         uploadType: 'octet', //'multipart',
         uploadMethod: 'POST',
+        testChunks: false, // 是否发送 GET 请求以检查现有块是否已经上传过, 启用此功能以支持断点续传
         testUrl: null,
         testMethod: 'GET',
-        testChunks: false,
-        revertUrl: null, // jack: 撤销已上传的文件接口URL
-        chunkSize: 5 * 1024 * 1024,
+        revertUrl: null,   // jack: 撤销已上传的文件接口URL
+        chunkSize: 5 * 1024 * 1024,  // 每个块的字节数, 常见的数值范围为 1 MB 到 10 MB
         forceChunkSize: true,
-        simultaneousUploads: 3,
-        maxChunkRetries: 3,
-        chunkRetryInterval: 300,
+        simultaneousUploads: 3,      // 有多少块并行上传
+        maxChunkRetries: 3,          // 最大重试次数
+        chunkRetryInterval: 2000,    // 重试间隔(会自动进行指数退避)
         chunkFormat: 'blob',
         maxFiles: undefined,
-        pasteUpload: true, // jack: 是否开启支持粘贴剪切板上传文件
-        directoryUpload: false, // jack: 支持上传文件夹(即：上传这个文件夹里的所有文件)
-        resumableUpload: false, // jack: 是否开启断点续传，它需要服务器端配合支持，开启后，前端会进行文件的MD5计算，对于大文件MD5计算过程会比较慢
+        pasteUpload: true,       // jack: 是否开启支持粘贴剪切板上传文件
+        directoryUpload: false,  // jack: 支持上传文件夹(即：上传这个文件夹里的所有文件)
+        resumableUpload: false,  // jack: 是否开启断点续传，它需要服务器端配合支持，开启后，前端会进行文件的MD5计算，对于大文件MD5计算过程会比较慢
         fileParameterName: 'file',
         chunkNumberParameterName: 'chunkNo',
         chunkSizeParameterName: 'chunkSize',
@@ -946,7 +947,10 @@ const Resumable = window.Resumable = function (opts) {
                     var retryInterval = $.getOpt('chunkRetryInterval');
                     if (retryInterval !== undefined) {
                         $.pendingRetry = true;
-                        setTimeout($.send, retryInterval);
+                        // 指数退避
+                        var backoff = Math.min(retryInterval * Math.pow(2, $.retries), 30000);
+                        var jitter = Math.random() * 1000;
+                        setTimeout($.send, backoff + jitter);
                     } else {
                         $.send();
                     }
@@ -1116,6 +1120,8 @@ const Resumable = window.Resumable = function (opts) {
         // In some cases (such as videos) it's really handy to upload the first
         // and last chunk of a file quickly; this let's the server check the file's
         // metadata and determine if there's even a point in continuing.
+        // 在某些情况下（比如视频文件），快速上传文件的首部分和末部分会非常方便；
+        // 这样服务器就能检查文件的元数据，并判断是否有必要继续进行上传操作。
         if ($.getOpt('prioritizeFirstAndLastChunk')) {
             $h.each($.files, function (file) {
                 if (file.chunks.length && file.chunks[0].status() == 'pending' && file.chunks[0].preprocessState === 0) {
@@ -1888,11 +1894,12 @@ Resumable.prototype._calcFileMD5 = function(resumFile) {
             var chunksPerCycle = 50;  // 每个计算周期中处理的数据块数
             var totalChunks = Math.ceil(fileSize / maxChunkSize);
             var totalCalc = true; // 是否全量计算MD5
+            const totalCalcFileSize = 100 * 1024 * 1024;
             // 为了加速大文件的MD5计算速度，采用加速策略：
-            // a. <= 20MB 的全量计算
-            // b. > 20MB 的抽样5段(前、后、中间3段)+文件修改时间计算即可
+            // a. <= 100MB 的全量计算
+            // b. > 100MB 的抽样5段(前、后、中间3段)+文件修改时间计算即可
             var needHashChunks = [];
-            if (fileSize <= 20 * 1024 * 1024) {
+            if (fileSize <= totalCalcFileSize) {
                 for (var c = 1; c <= totalChunks; ++c) {
                     needHashChunks.push(c);
                 }
