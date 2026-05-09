@@ -14,7 +14,7 @@ public class ResumableChunk {
     private Integer totalChunks;
     // 文件总大小（字节）
     private Long fileSize;
-    private String fileMD5;
+    private String fileHash;
     private String relativePath;
 
     public String getFileId() {
@@ -78,12 +78,12 @@ public class ResumableChunk {
         this.fileSize = fileSize;
     }
 
-    public String getFileMD5() {
-        return fileMD5;
+    public String getFileHash() {
+        return fileHash;
     }
 
-    public void setFileMD5(String fileMD5) {
-        this.fileMD5 = fileMD5;
+    public void setFileHash(String hash) {
+        this.fileHash = hash;
     }
 
     public String getRelativePath() {

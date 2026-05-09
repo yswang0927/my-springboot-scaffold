@@ -70,7 +70,7 @@ const Resumable = window.Resumable = function (opts) {
         typeParameterName: 'fileType',
         fileIdParameterName: 'fileId',
         fileNameParameterName: 'fileName',
-        fileMD5ParameterName: 'fileMD5',
+        fileHashParameterName: 'fileHash',
         relativePathParameterName: 'relativePath',
         dragOverClass: 'resum-dragover',
         throttleProgressCallbacks: 0.5,
@@ -222,10 +222,10 @@ const Resumable = window.Resumable = function (opts) {
             // 如果启动了断点续传, 则这里采用计算抽样MD5作为fileId
             if ($.canResumableUpload) {
                 return new Promise(function (resolve, reject) {
-                    $._calcFileMD5(file, function done(md5) {
-                        resolve(md5);
+                    $._calcFileHash(file, function done(hash) {
+                        resolve(hash);
                     }, function failed() {
-                        // 如果抽样MD5计算失败了, 则兜底方式生成
+                        // 如果file-hash值计算失败了, 则兜底方式生成
                         var _hashCode = function(str) {
                             let hash = 0;
                             for (let i = 0; i < str.length; i++) {
@@ -463,11 +463,11 @@ const Resumable = window.Resumable = function (opts) {
                     $.fire('filesAdded', files, filesSkipped);
                 }, 0);
 
-                // wys: calc file-md5 if need(resumableUpload=true)
-                // 当启用断点续传, 在生成fileId时使用md5值, 因此不需要在这里计算
+                // wys: calc file-hash if need(resumableUpload=true)
+                // 当启用断点续传, 在生成fileId时使用file-hash值, 因此不需要在这里计算
                 /*$.canResumableUpload && (files.forEach(function(rf) {
-                   $._calcFileMD5(rf.file, function done(md5) {
-                       rs.setMD5(md5);
+                   $._calcFileHash(rf.file, function done(md5) {
+                       rs.setFileHash(md5);
                    }, function failed() {});
                 }));*/
             }
@@ -547,10 +547,10 @@ const Resumable = window.Resumable = function (opts) {
 
                         file.fileId = fileId;
                         var f = new ResumableFile($, file, fileId);
-                        // wys: 当启用了断点续传, MD5的计算移动到fileId生成中计算唯一ID,
-                        // 这样 fileId==md5了, 便于后端进行断点续传.
+                        // wys: 当启用了断点续传, file-hash的计算移动到fileId生成中计算唯一ID,
+                        // 这样 fileId==file-hash了, 便于后端进行断点续传.
                         if ($.canResumableUpload) {
-                            f.setMD5(fileId);
+                            f.setFileHash(fileId);
                         }
                         $.files.push(f);
                         files.push(f);
@@ -599,7 +599,7 @@ const Resumable = window.Resumable = function (opts) {
         $.size = file.size;
         $.readableSize = resumableObj.utils.formatSize(file.size);  // wys
         $.lastModified = file.lastModified || 0; // wys
-        $.md5 = ''; // wys: file-md5 value
+        $.fileHash = ''; // wys: file-hash value
         $.relativePath = file.relativePath || file.webkitRelativePath || $.fileName;
         $._prevProgress = 0;
         $._pause = false;
@@ -635,11 +635,11 @@ const Resumable = window.Resumable = function (opts) {
         };
 
         // wys
-        $.setMD5 = function(md5) {
-            $.md5 = md5 || '';
+        $.setFileHash = function(hash) {
+            $.fileHash = hash || '';
         };
         $.isReady = function() {
-            return (($.getOpt('resumableUpload') === false) || $.md5 !== '');
+            return (($.getOpt('resumableUpload') === false) || $.fileHash !== '');
         };
 
         // Main code to set up a file object with chunks,
@@ -906,7 +906,7 @@ const Resumable = window.Resumable = function (opts) {
                     ['typeParameterName', $.fileObjType],
                     ['fileIdParameterName', $.fileObj.fileId],
                     ['fileNameParameterName', $.fileObj.fileName],
-                    ['fileMD5ParameterName', $.fileObj.md5],
+                    ['fileHashParameterName', $.fileObj.fileHash],
                     ['relativePathParameterName', $.fileObj.relativePath],
                     ['totalChunksParameterName', $.fileObj.chunks.length]
                 ].filter(function (pair) {
@@ -1017,7 +1017,7 @@ const Resumable = window.Resumable = function (opts) {
                 ['typeParameterName', $.fileObjType],
                 ['fileIdParameterName', $.fileObj.fileId],
                 ['fileNameParameterName', $.fileObj.fileName],
-                ['fileMD5ParameterName', $.fileObj.md5],
+                ['fileHashParameterName', $.fileObj.fileHash],
                 ['relativePathParameterName', $.fileObj.relativePath],
                 ['totalChunksParameterName', $.fileObj.chunks.length]
             ].filter(function (pair) {
@@ -1932,7 +1932,7 @@ Resumable.prototype.initUI = function(container) {
 
 };
 
-Resumable.prototype._calcFileMD5 = function(aFile, resolve, reject) {
+Resumable.prototype._calcFileHash = function(aFile, resolve, reject) {
 
     this.md5WorkerPool.submit((function(file, success, failure) {
         return function(agent) {
@@ -1944,10 +1944,10 @@ Resumable.prototype._calcFileMD5 = function(aFile, resolve, reject) {
             var chunksPerCycle = 50;  // 每个计算周期中处理的数据块数
             var totalChunks = Math.ceil(fileSize / maxChunkSize);
             var totalCalc = true; // 是否全量计算MD5
-            const totalCalcFileSize = 100 * 1024 * 1024;
+            const totalCalcFileSize = 50 * 1024 * 1024;
             // 为了加速大文件的MD5计算速度，采用加速策略：
-            // a. <= 100MB 的全量计算
-            // b. > 100MB 的抽样5段(前、后、中间3段)+文件修改时间计算即可
+            // a. <= 50MB 的全量计算
+            // b. > 50MB 的抽样5段(前、后、中间3段)+文件修改时间计算即可
             var needHashChunks = [];
             if (fileSize <= totalCalcFileSize) {
                 for (var c = 1; c <= totalChunks; ++c) {
