@@ -3,7 +3,7 @@
 * https://github.com/23/resumable.js
 * https://www.resumablejs.com/guides/retries-and-resume/
 *
-* - jack: 增加内置UI和断点续传等
+* - wys: 增加内置UI和断点续传等
 */
 const Resumable = window.Resumable = function (opts) {
     if (!(this instanceof Resumable)) {
@@ -28,7 +28,7 @@ const Resumable = window.Resumable = function (opts) {
     // PROPERTIES
     var $ = this;
     $.files = [];
-    // jack add:
+    // wys add:
     $._uploadAllStarted = false;
     $.defaults = {
         url: '',
@@ -37,17 +37,17 @@ const Resumable = window.Resumable = function (opts) {
         testChunks: false, // 是否发送 GET 请求以检查现有块是否已经上传过, 启用此功能以支持断点续传
         testUrl: null,
         testMethod: 'GET',
-        revertUrl: null,   // jack: 撤销已上传的文件接口URL
+        revertUrl: null,   // 撤销已上传的文件接口URL
         chunkSize: 5 * 1024 * 1024,  // 每个块的字节数, 常见的数值范围为 1 MB 到 10 MB
         forceChunkSize: true,
-        simultaneousUploads: 3,      // 有多少块并行上传
+        simultaneousUploads: 1,      // 有多少块并行上传
         maxChunkRetries: 3,          // 最大重试次数
         chunkRetryInterval: 2000,    // 重试间隔(会自动进行指数退避)
         chunkFormat: 'blob',
         maxFiles: undefined,
-        pasteUpload: true,       // jack: 是否开启支持粘贴剪切板上传文件
-        directoryUpload: false,  // jack: 支持上传文件夹(即：上传这个文件夹里的所有文件)
-        resumableUpload: false,  // jack: 是否开启断点续传，它需要服务器端配合支持，开启后，前端会进行文件的MD5计算，对于大文件MD5计算过程会比较慢
+        pasteUpload: true,       // 是否开启支持粘贴剪切板上传文件
+        directoryUpload: false,  // 支持上传文件夹(即：上传这个文件夹里的所有文件)
+        resumableUpload: false,  // 是否开启断点续传，它需要服务器端配合支持，开启后，前端会进行文件的MD5计算，对于大文件MD5计算过程会比较慢
         fileParameterName: 'file',
         chunkNumberParameterName: 'chunkNo',
         chunkSizeParameterName: 'chunkSize',
@@ -425,19 +425,19 @@ const Resumable = window.Resumable = function (opts) {
                     $.fire('filesAdded', files, filesSkipped);
                 }, 0);
 
-                // jack: calc file-md5 if need(resumableUpload=true)
+                // wys: calc file-md5 if need(resumableUpload=true)
                 $.canResumableUpload && (files.forEach(function(rf) {
                    $._calcFileMD5(rf);
                 }));
             }
         };
         $h.each(fileList, function (file) {
-            var fileName = file.newName || file.fileName || file.name; // jack: file.newName是来自剪切板中的临时文件名
+            var fileName = file.newName || file.fileName || file.name; // wys: file.newName是来自剪切板中的临时文件名
             var fileType = file.type; // e.g image/png, video/mp4
 
             if (o.fileTypes.length > 0) {
                 var fileTypeFound = false;
-                // jack add
+                // wys add
                 var fileExtMatched = false, fileTypeMatched = false;
                 for (var index in o.fileTypes) {
                     // For good behaviour we do some inital sanitizing. Remove spaces and lowercase all
@@ -458,7 +458,7 @@ const Resumable = window.Resumable = function (opts) {
                     }
                 }
 
-                // jack: 增加严格检查：通过文件扩展名从MIME_TYPES中获取mime-type和fileType进行二次判断
+                // wys: 增加严格检查：通过文件扩展名从MIME_TYPES中获取mime-type和fileType进行二次判断
                 // ps: 似乎没用，因为浏览器是根据文件的扩展名来设置fileType的，而不是内容的MimeType类型；
                 // 因此，即使将.txt的文件重命名为.png，浏览器给出的file.type是image/png而不是text/plain。
                 if (fileTypeFound && fileExtMatched && !fileTypeMatched) {
@@ -491,7 +491,7 @@ const Resumable = window.Resumable = function (opts) {
             function addFile(fileId) {
                 if (!$.getFromFileId(fileId)) {
                     (function () {
-                        // jack add 检查是否存在相同的文件
+                        // wys add 检查是否存在相同的文件
                         var fileExists = false;
                         $.files.forEach(function(f) {
                             if (f.fileName === fileName && f.size === file.size) {
@@ -548,11 +548,11 @@ const Resumable = window.Resumable = function (opts) {
         $.resumableObj = resumableObj;
         $.file = file;
         $.fileId = fileId;
-        $.fileName = file.newName || file.fileName || file.name; // jack:file.newName是来自剪切板中的临时文件名
+        $.fileName = file.newName || file.fileName || file.name; // wys:file.newName是来自剪切板中的临时文件名
         $.size = file.size;
-        $.readableSize = resumableObj.utils.formatSize(file.size);  // jack
-        $.lastModified = file.lastModified || 0; // jack
-        $.md5 = ''; // jack: file-md5 value
+        $.readableSize = resumableObj.utils.formatSize(file.size);  // wys
+        $.lastModified = file.lastModified || 0; // wys
+        $.md5 = ''; // wys: file-md5 value
         $.relativePath = file.relativePath || file.webkitRelativePath || $.fileName;
         $._prevProgress = 0;
         $._pause = false;
@@ -587,9 +587,13 @@ const Resumable = window.Resumable = function (opts) {
             }
         };
 
-        // jack
+        // wys
         $.setMD5 = function(md5) {
-            $.md5 = md5;
+            $.md5 = md5 || '';
+            if (md5) {
+                // wys: 使用md5值来重置fileId,便于支持断点续传
+                $.fileId = md5;
+            }
             //console.log('>>文件<'+ $.fileName +'> MD5 = '+ md5);
         };
         $.isReady = function() {
@@ -627,7 +631,7 @@ const Resumable = window.Resumable = function (opts) {
                     c.abort();
                 }
             });
-           
+
             $.remove();
             $.resumableObj.fire('fileProgress', $);
 
@@ -636,7 +640,7 @@ const Resumable = window.Resumable = function (opts) {
                 $.resumableObj.uploadNextChunk();
             }
 
-            // jack 撤销已上传的文件
+            // wys 撤销已上传的文件
             var revertUrl = $.getOpt('revertUrl');
             if (revertUrl && $._prevProgress > 0) {
                 var xhr = new XMLHttpRequest();
@@ -749,7 +753,7 @@ const Resumable = window.Resumable = function (opts) {
         };
         $.upload = function () {
             var found = false;
-            // jack: add $.isReady()
+            // wys: add $.isReady()
             if ($.isPaused() === false && $.isReady()) {
                 var preprocess = $.getOpt('preprocessFile');
                 if (typeof preprocess === 'function') {
@@ -826,8 +830,10 @@ const Resumable = window.Resumable = function (opts) {
                 var status = $.status();
                 if (status == 'success') {
                     $.callback(status, $.message());
+                    // 测试发现当前块已经上传过, 则上传下一个块
                     $.resumableObj.uploadNextChunk();
                 } else {
+                    // 当前块未上传过, 则上传它
                     $.send();
                 }
             };
@@ -845,7 +851,7 @@ const Resumable = window.Resumable = function (opts) {
             $h.each(customQuery, function (k, v) {
                 params.push([encodeURIComponent(parameterNamespace + k), encodeURIComponent(v)].join('='));
             });
-            // jack add
+            // wys add
             params.push(['resumableUpload', $.getOpt('resumableUpload')].join('='));
             // Add extra data to identify chunk
             params = params.concat(
@@ -933,13 +939,13 @@ const Resumable = window.Resumable = function (opts) {
                 var status = $.status();
                 if (status == 'success' || status == 'error') {
                     $.callback(status, $.message());
-                    // jack add shouldAutoUploadNext check
+                    // wys add shouldAutoUploadNext check
                     if ($.resumableObj.shouldAutoUploadNext()) {
                         $.resumableObj.uploadNextChunk();
                     } else {
                         $.fileObj.upload();
                     }
-                    
+
                 } else {
                     $.callback('retry', $.message());
                     $.abort();
@@ -981,7 +987,7 @@ const Resumable = window.Resumable = function (opts) {
                 query[$.getOpt(pair[0])] = pair[1];
                 return query;
             }, {});
-            // jack add
+            // wys add
             query['resumableUpload'] = $.getOpt('resumableUpload');
             // Mix in custom data
             var customQuery = $.getOpt('query');
@@ -1260,7 +1266,7 @@ const Resumable = window.Resumable = function (opts) {
         });
         return uploading;
     };
-    // jack add shouldAutoUploadNext()
+    // wys add shouldAutoUploadNext()
     $.shouldAutoUploadNext = function() {
         return $._uploadAllStarted || $.getOpt('autoUpload') === true;
     };
@@ -1353,7 +1359,7 @@ const Resumable = window.Resumable = function (opts) {
     };
 
     /**
-     * jack: 支持可恢复的断点续传功能（需要前端计算文件MD5值和后端服务支持）
+     * wys: 支持可恢复的断点续传功能（需要前端计算文件MD5值和后端服务支持）
      * 由于前端计算MD5耗性能，因此这里采用Worker线程池和任务队列方式来加速计算。
      */
     $.canResumableUpload = false;
@@ -1372,7 +1378,7 @@ const Resumable = window.Resumable = function (opts) {
     return this;
 };
 
-// 2024/04/16 jack 扩展：
+// 2024/04/16 wys 扩展：
 Resumable.MIME_TYPES = {
     "abs": "audio/x-mpeg",
     "ai": "application/postscript",

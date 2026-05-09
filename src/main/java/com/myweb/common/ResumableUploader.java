@@ -124,7 +124,6 @@ public class ResumableUploader {
         // 检查分块是否已上传，避免重复写入
         if (uploadTask.isChunkUploaded(chunkNo)) {
             closeQuietly(chunkBody);
-            System.out.println(">>> 块 <"+ chunkNo +"> 已上传过, 跳过");
             return uploadTask.isAllChunksUploaded();
         }
 
