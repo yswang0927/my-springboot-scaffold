@@ -99,14 +99,8 @@ public class ResumableUploader {
         String fileId = cleanFileId(chunk.getFileId());
         final String fileName = cleanFileName(chunk.getFileName());
         final long fileSize = chunk.getFileSize();
-        final String fileMd5 = chunk.getFileMD5();
         final int chunkNo = chunk.getChunkNo();
         final long offset = chunk.getChunkStartOffset();
-
-        // 如果存在文件MD5值,则使用文件MD5值作为fileId以支持断点续传
-        if (hasText(fileMd5)) {
-            fileId = fileMd5;
-        }
 
         if (!hasText(fileId)) {
             throw new FileUploadException("缺少有效的 fileId 参数");

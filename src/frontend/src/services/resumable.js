@@ -1,10 +1,23 @@
-/*
-* MIT Licensed
-* https://github.com/23/resumable.js
-* https://www.resumablejs.com/guides/retries-and-resume/
-*
-* - wys: 增加内置UI和断点续传等
-*/
+/**
+ * MIT Licensed
+ * https://github.com/23/resumable.js
+ * https://www.resumablejs.com/guides/retries-and-resume/
+ *
+ * - wys: 增加内置UI和断点续传等
+ *
+ * 使用方式：
+ * 1. 使用内置提供的UI
+ * var r = new Resumable({...});
+ * r.initUI('domSelector'|HTMLElement);
+ *
+ * 2. 使用自定义的drop区域和浏览文件触发对象
+ * var r = new Resumable({
+ *     dropTarget: 'domSelector'|HTMLElement,
+ *     browseTarget: 'domSelector'|HTMLElement,
+ *     filesListTarget: 'domSelector'|HTMLElement
+ * });
+ * r.initUI();
+ */
 const Resumable = window.Resumable = function (opts) {
     if (!(this instanceof Resumable)) {
         return new Resumable(opts);
@@ -67,11 +80,7 @@ const Resumable = window.Resumable = function (opts) {
         preprocessFile: null,
         prioritizeFirstAndLastChunk: false,
         parameterNamespace: '',
-        generateFileId: function() {
-            return ((new Date()).getTime() / 1000 | 0).toString(16) + "xxxxxxxxxxxxxxxx".replace(/[x]/g, function() {
-                return (16 * Math.random() | 0).toString(16);
-            }).toLowerCase();
-        },
+        generateFileId: null,  // 自定义文件ID的生成器: function(file) {return id;}
         getTarget: null,
         permanentErrors: [400, 401, 403, 404, 409, 413, 415, 500, 501], // 如果服务端响应这些HTTP状态码，则不再重试上传
         withCredentials: false,
@@ -198,14 +207,42 @@ const Resumable = window.Resumable = function (opts) {
                 }
             }
         },
-        generateFileId: function (file, event) {
+        _generateFileId: function(file) {
+            return ((new Date()).getTime() / 1000 | 0).toString(16) + "xxxxxxxxxxxxxxxx".replace(/[x]/g, function() {
+                return (16 * Math.random() | 0).toString(16);
+            }).toLowerCase();
+        },
+        generateUniqueIdentifier: function (file, event) {
+            // 如果自定义了文件ID生成器, 则使用自定义的
             var custom = $.getOpt('generateFileId');
             if (typeof custom === 'function') {
                 return custom(file, event);
             }
-            var relativePath = file.webkitRelativePath || file.relativePath || file.fileName || file.name; // Some confusion in different versions of Firefox
-            var size = file.size;
-            return (size + '-' + relativePath.replace(/[^0-9a-zA-Z_-]/img, ''));
+
+            // 如果启动了断点续传, 则这里采用计算抽样MD5作为fileId
+            if ($.canResumableUpload) {
+                return new Promise(function (resolve, reject) {
+                    $._calcFileMD5(file, function done(md5) {
+                        resolve(md5);
+                    }, function failed() {
+                        // 如果抽样MD5计算失败了, 则兜底方式生成
+                        var _hashCode = function(str) {
+                            let hash = 0;
+                            for (let i = 0; i < str.length; i++) {
+                                hash = (Math.imul(31, hash) + str.charCodeAt(i)) | 0;
+                            }
+                            return hash;
+                        };
+                        var relativePath = file.webkitRelativePath || file.relativePath || file.fileName || file.name; // Some confusion in different versions of Firefox
+                        var size = file.size;
+                        //resolve(size + '-' + relativePath.replace(/[^0-9a-zA-Z_-]/img, ''));
+                        resolve(size + '-' + file.lastModified + '-' + _hashCode(relativePath));
+                        console.warn("Failed to calc QUICK-MD5 of File<"+ file.name +">, use fallback.")
+                    });
+                });
+            } else {
+                return _generateFileId(file);
+            }
         },
         contains: function (array, test) {
             var result = false;
@@ -421,16 +458,21 @@ const Resumable = window.Resumable = function (opts) {
                     // no succeeded files, just skip
                     return;
                 }
+
                 window.setTimeout(function () {
                     $.fire('filesAdded', files, filesSkipped);
                 }, 0);
 
                 // wys: calc file-md5 if need(resumableUpload=true)
-                $.canResumableUpload && (files.forEach(function(rf) {
-                   $._calcFileMD5(rf);
-                }));
+                // 当启用断点续传, 在生成fileId时使用md5值, 因此不需要在这里计算
+                /*$.canResumableUpload && (files.forEach(function(rf) {
+                   $._calcFileMD5(rf.file, function done(md5) {
+                       rs.setMD5(md5);
+                   }, function failed() {});
+                }));*/
             }
         };
+
         $h.each(fileList, function (file) {
             var fileName = file.newName || file.fileName || file.name; // wys: file.newName是来自剪切板中的临时文件名
             var fileType = file.type; // e.g image/png, video/mp4
@@ -505,6 +547,11 @@ const Resumable = window.Resumable = function (opts) {
 
                         file.fileId = fileId;
                         var f = new ResumableFile($, file, fileId);
+                        // wys: 当启用了断点续传, MD5的计算移动到fileId生成中计算唯一ID,
+                        // 这样 fileId==md5了, 便于后端进行断点续传.
+                        if ($.canResumableUpload) {
+                            f.setMD5(fileId);
+                        }
                         $.files.push(f);
                         files.push(f);
                         f.container = (typeof event != 'undefined' ? event.srcElement : null);
@@ -519,7 +566,7 @@ const Resumable = window.Resumable = function (opts) {
             }
 
             // directories have size == 0
-            var uniqueIdentifier = $h.generateFileId(file, event);
+            var uniqueIdentifier = $h.generateUniqueIdentifier(file, event);
             if (uniqueIdentifier && typeof uniqueIdentifier.then === 'function') {
                 // Promise or Promise-like object provided as unique identifier
                 uniqueIdentifier.then(
@@ -590,11 +637,6 @@ const Resumable = window.Resumable = function (opts) {
         // wys
         $.setMD5 = function(md5) {
             $.md5 = md5 || '';
-            if (md5) {
-                // wys: 使用md5值来重置fileId,便于支持断点续传
-                $.fileId = md5;
-            }
-            //console.log('>>文件<'+ $.fileName +'> MD5 = '+ md5);
         };
         $.isReady = function() {
             return (($.getOpt('resumableUpload') === false) || $.md5 !== '');
@@ -1368,11 +1410,17 @@ const Resumable = window.Resumable = function (opts) {
             console.warn("Your browser does not supports resumable upload features, because web Worker or Blob not supported!");
             return;
         }
-        $.canResumableUpload = true;
-        $.md5WorkerUrl = window.URL.createObjectURL(new Blob([Resumable.MD5_HASHER], {type:"text/javascript"}));
-        $.md5WorkerPool = new ResumableWorkerPool($.md5WorkerUrl, {
-            maxSize: Math.min(5, typeof $.getOpt('maxFiles') !== 'undefined' ? $.getOpt('maxFiles') : 5)
-        });
+
+        try {
+            $.md5WorkerUrl = window.URL.createObjectURL(new Blob([Resumable.MD5_HASHER], {type: "text/javascript"}));
+            $.md5WorkerPool = new ResumableWorkerPool($.md5WorkerUrl, {
+                maxSize: Math.min(5, typeof $.getOpt('maxFiles') !== 'undefined' ? $.getOpt('maxFiles') : 5)
+            });
+            $.canResumableUpload = true;
+        } catch (e) {
+            $.canResumableUpload = false;
+            console.warn("Your browser does not supports resumable upload features, because web Worker or Blob not supported!");
+        }
     }
 
     return this;
@@ -1686,13 +1734,13 @@ Resumable.prototype.initUI = function(container) {
         showTip('请不要一次上传超过 ' + r.getOpt('maxFiles') + ' 个文件');
     };
     r.defaults.minFileSizeErrorCallback = function (file, errorCount) {
-        showTip((file.fileName || file.name) + ' 文件太小，请上传大于等于 ' + r.utils.formatSize(r.getOpt('minFileSize')) + ' 大小的文件');
+        showTip((file.fileName || file.name) + ' 文件太小，请上传 >= ' + r.utils.formatSize(r.getOpt('minFileSize')) + ' 大小的文件');
     };
     r.defaults.maxFileSizeErrorCallback = function (file, errorCount) {
         showTip((file.fileName || file.name) + ' 文件太大，单个文件不能超过 ' + r.utils.formatSize(r.getOpt('maxFileSize')) + ' 大小');
     };
     r.defaults.fileTypesErrorCallback = function (file, errorCount) {
-        showTip((file.fileName || file.name) + ' 文件类型不被允许，允许类型：' + r.getOpt('fileTypes').join(', '));
+        showTip((file.fileName || file.name) + ' 文件类型不被允许，允许的类型：' + r.getOpt('fileTypes').join(', '));
     };
 
     var FileItem = function(file, autoUpload) {
@@ -1884,18 +1932,14 @@ Resumable.prototype.initUI = function(container) {
 
 };
 
-Resumable.prototype._calcFileMD5 = function(resumFile) {
-    if (!this.canResumableUpload) {
-        return;
-    }
+Resumable.prototype._calcFileMD5 = function(aFile, resolve, reject) {
 
-    this.md5WorkerPool.submit((function(rfile) {
+    this.md5WorkerPool.submit((function(file, success, failure) {
         return function(agent) {
             var stime = Date.now();
-            var file = rfile.file;
-            var fileSize = rfile.size;
-            var fileName = rfile.fileName;
-            var lastModified = rfile.lastModified;
+            var fileSize = file.size;
+            var fileName = file.name;
+            var lastModified = file.lastModified;
             var maxChunkSize = 1 * 1024 * 1024; // 每次处理数据块的最大值1MB
             var chunksPerCycle = 50;  // 每个计算周期中处理的数据块数
             var totalChunks = Math.ceil(fileSize / maxChunkSize);
@@ -1985,8 +2029,11 @@ Resumable.prototype._calcFileMD5 = function(resumFile) {
                     }*/
                 };
                 fileReader.onerror = function(e) {
-                    console.error(e);
                     done();
+                    if (typeof failure === 'function') {
+                        failure(e);
+                    }
+                    console.error(e);
                     return;
                 };
 
@@ -2003,29 +2050,43 @@ Resumable.prototype._calcFileMD5 = function(resumFile) {
 
                     // MD5计算结束
                     if ('end' === status) {
-                        rfile.setMD5(data.md5);
+                        var md5Value = data.md5;
+                        console.log('::Resumable.js calc QUICK-MD5 of File<'+ fileName +'>: '+ md5Value +', cost: '+(Date.now()-stime)+'ms');
+                        if (typeof success === 'function') {
+                            success(md5Value);
+                        }
                         done();
                         return;
                     }
 
-                    console.error(data);
                     done();
+                    if (typeof failure === 'function') {
+                        failure(data);
+                    }
+                    console.error(data);
                 });
                 agent.onerror(function(e) {
-                    console.error(e);
                     done();
+                    if (typeof failure === 'function') {
+                        failure(e);
+                    }
+                    console.error(e);
                 });
 
                 // 通知worker开始计算了
                 agent.postMessage({"status": "start"});
 
             } catch (e) {
-                console.error(e);
                 done();
+                if (typeof failure === 'function') {
+                    failure(e);
+                }
+                console.error(e);
             }
         };
 
-    })(resumFile));
+    })(aFile, resolve, reject));
+
 };
 
 Resumable.prototype.destroy = function() {
