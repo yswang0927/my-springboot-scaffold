@@ -237,7 +237,7 @@ const Resumable = window.Resumable = function (opts) {
                         var size = file.size;
                         //resolve(size + '-' + relativePath.replace(/[^0-9a-zA-Z_-]/img, ''));
                         resolve(size + '-' + file.lastModified + '-' + _hashCode(relativePath));
-                        console.warn("Failed to calc QUICK-MD5 of File<"+ file.name +">, use fallback.")
+                        console.warn("Failed to calc QUICK-HASH of File<"+ file.name +">, use fallback.")
                     });
                 });
             } else {
@@ -600,7 +600,7 @@ const Resumable = window.Resumable = function (opts) {
         $.readableSize = resumableObj.utils.formatSize(file.size);  // wys
         $.lastModified = file.lastModified || 0; // wys
         $.fileHash = ''; // wys: file-hash value
-        $.relativePath = file.relativePath || file.webkitRelativePath || $.fileName;
+        $.relativePath = file.relativePath || file.webkitRelativePath || '';
         $._prevProgress = 0;
         $._pause = false;
         $._canceled = false;
@@ -907,7 +907,7 @@ const Resumable = window.Resumable = function (opts) {
                     ['fileIdParameterName', $.fileObj.fileId],
                     ['fileNameParameterName', $.fileObj.fileName],
                     ['fileHashParameterName', $.fileObj.fileHash],
-                    ['relativePathParameterName', $.fileObj.relativePath],
+                    ['relativePathParameterName', $.getOpt('directoryUpload') === true ? $.fileObj.relativePath : ''],
                     ['totalChunksParameterName', $.fileObj.chunks.length]
                 ].filter(function (pair) {
                     // include items that resolve to truthy values
@@ -1018,7 +1018,7 @@ const Resumable = window.Resumable = function (opts) {
                 ['fileIdParameterName', $.fileObj.fileId],
                 ['fileNameParameterName', $.fileObj.fileName],
                 ['fileHashParameterName', $.fileObj.fileHash],
-                ['relativePathParameterName', $.fileObj.relativePath],
+                ['relativePathParameterName', $.getOpt('directoryUpload') === true ? $.fileObj.relativePath : ''],
                 ['totalChunksParameterName', $.fileObj.chunks.length]
             ].filter(function (pair) {
                 // include items that resolve to truthy values
@@ -1675,12 +1675,13 @@ Resumable.prototype.initUI = function(container) {
 
     var uiDoms = r.uiDoms;
     var showTip = r.getOpt('showMessage') || function(msg) {console.log(msg)};
+    var isDirUpload = r.getOpt('directoryUpload') === true;
 
     if (!dropTargetEle && container) {
         container.innerHTML = '<div style="position:relative; height:100%;">' +
             '<div data-ref="dropper" class="resum-drop" tabindex="-1">' +
             '<div style="text-align:center;margin-bottom:10px;pointer-events:none;"><svg width="32" height="32" viewBox="0 0 20 20" class="resum-icon"><path fill="#8F99A8" d="M10.71 10.29c-.18-.18-.43-.29-.71-.29s-.53.11-.71.29l-3 3a1.003 1.003 0 001.42 1.42L9 13.41V19c0 .55.45 1 1 1s1-.45 1-1v-5.59l1.29 1.29c.18.19.43.3.71.3a1.003 1.003 0 00.71-1.71l-3-3zM15 4c-.12 0-.24.03-.36.04C13.83 1.69 11.62 0 9 0 5.69 0 3 2.69 3 6c0 .05.01.09.01.14A3.98 3.98 0 000 10c0 2.21 1.79 4 4 4 0-.83.34-1.58.88-2.12l3-3a2.993 2.993 0 014.24 0l3 3-.01.01c.52.52.85 1.23.87 2.02C18.28 13.44 20 11.42 20 9c0-2.76-2.24-5-5-5z" fill-rule="evenodd"></path></svg></div>' +
-            '<div style="text-align:center;font-weight:400;line-height:2.0;font-size:1em;margin-bottom:10px;">拖放文件到这里，或 <div data-ref="browser" class="resum-browser" style="display:inline-block;cursor:pointer;">选择文件</div></div>' +
+            '<div style="text-align:center;font-weight:400;line-height:2.0;font-size:1em;margin-bottom:10px;">拖放'+(isDirUpload?'文件夹':'文件')+'到这里，或 <div data-ref="browser" class="resum-browser" style="display:inline-block;cursor:pointer;">选择'+(isDirUpload?'文件夹':'文件')+'</div></div>' +
             (r.getOpt('fileTypes') && r.getOpt('fileTypes').length > 0 ? ('<div style="text-align:center;line-height:1.5;pointer-events:none;" class="resum-subtext resum-filetypes">支持文件类型：' + r.getOpt('fileTypes').join(', ') + '</div>') : '') +
             (r.getOpt('maxFileSize') && r.getOpt('maxFileSize') > 0 ? ('<div style="text-align:center;line-height:1.5;pointer-events:none;" class="resum-subtext resum-max-filesize">单文件最大：' + r.utils.formatSize(r.getOpt('maxFileSize')) + '</div>') : '') +
             '<div data-ref="filesList" class="resum-files-list"></div>' +
@@ -1944,10 +1945,10 @@ Resumable.prototype._calcFileHash = function(aFile, resolve, reject) {
             var chunksPerCycle = 50;  // 每个计算周期中处理的数据块数
             var totalChunks = Math.ceil(fileSize / maxChunkSize);
             var totalCalc = true; // 是否全量计算MD5
-            const totalCalcFileSize = 50 * 1024 * 1024;
+            const totalCalcFileSize = 20 * 1024 * 1024;
             // 为了加速大文件的MD5计算速度，采用加速策略：
-            // a. <= 50MB 的全量计算
-            // b. > 50MB 的抽样5段(前、后、中间3段)+文件修改时间计算即可
+            // a. <= 20MB 的全量计算
+            // b. > 20MB 的抽样5段(前、后、中间3段)+文件修改时间计算即可
             var needHashChunks = [];
             if (fileSize <= totalCalcFileSize) {
                 for (var c = 1; c <= totalChunks; ++c) {
@@ -2051,7 +2052,7 @@ Resumable.prototype._calcFileHash = function(aFile, resolve, reject) {
                     // MD5计算结束
                     if ('end' === status) {
                         var md5Value = data.md5;
-                        console.log('::Resumable.js calc QUICK-MD5 of File<'+ fileName +'>: '+ md5Value +', cost: '+(Date.now()-stime)+'ms');
+                        console.log('::Resumable.js calc QUICK-HASH of File<'+ fileName +'>: '+ md5Value +', cost: '+(Date.now()-stime)+'ms');
                         if (typeof success === 'function') {
                             success(md5Value);
                         }

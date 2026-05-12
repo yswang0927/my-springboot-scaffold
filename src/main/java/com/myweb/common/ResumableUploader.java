@@ -36,8 +36,8 @@ public class ResumableUploader {
 
     private static final int BUFFER_SIZE = 8192;
     private static final String TMP_FILE_PREFIX = ".rsm-";
-    private static final String TMP_FILE_SUFFIX = ".tmp";
-    private static final String TMP_STATUS_FILE_SUFFIX = ".upload";
+    private static final String TMP_FILE_SUFFIX = ".upload";
+    private static final String TMP_STATUS_FILE_SUFFIX = ".status";
 
     // 定义过期时间：2小时
     private static final long EXPIRE_TIME_MILLIS = 2 * 3600 * 1000;
@@ -290,7 +290,7 @@ public class ResumableUploader {
         // 处理如果上传的是目录
         Path finalFilePath;
         if (hasText(relativePath)) {
-            if (relativePath.endsWith(fileName)) {
+            if (relativePath.endsWith('/' + fileName) || relativePath.endsWith('\\' + fileName)) {
                 finalFilePath = this.uploadDir.resolve(relativePath);
             } else {
                 finalFilePath = this.uploadDir.resolve(relativePath).resolve(fileName);
@@ -466,13 +466,22 @@ public class ResumableUploader {
         return sb.toString();
     }
 
+    /**
+     * Windows 文件名禁止字符:
+     * - 绝对禁用（9 个）< > : " / \ | ? *
+     * - 文件名不能以空格或句点 (.) 结尾
+     *
+     * Linux 文件名禁止字符:
+     * - 绝对禁用（2 个）/（路径分隔符）、\0（空字符）
+     * - 不禁止但强烈建议避免：空格、* ? ! $ & () [] { } | \ ` " 等（易被 Shell 误解析）
+     */
     static String cleanFileName(String fileName) {
         StringBuilder sb = new StringBuilder(fileName.length());
         for (int i = 0; i < fileName.length(); i++) {
             char ch = fileName.charAt(i);
             if ('/' == ch || '\\' == ch || ':' == ch || '*' == ch || '?' == ch
-                    || ';' == ch || '"' == ch || '\'' == ch || '|' == ch
-                    || '<' == ch ||  '>' == ch || Character.isWhitespace(ch)) {
+                    || '<' == ch ||  '>' == ch || '"' == ch  || '|' == ch
+                    || Character.isWhitespace(ch)) {
                 continue;
             }
             sb.append(ch);
