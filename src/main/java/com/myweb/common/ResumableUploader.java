@@ -290,7 +290,7 @@ public class ResumableUploader {
         // 处理如果上传的是目录
         Path finalFilePath;
         if (hasText(relativePath)) {
-            if (relativePath.endsWith('/' + fileName) || relativePath.endsWith('\\' + fileName)) {
+            if (relativePath.equals(fileName) || relativePath.endsWith('/' + fileName) || relativePath.endsWith('\\' + fileName)) {
                 finalFilePath = this.uploadDir.resolve(relativePath);
             } else {
                 finalFilePath = this.uploadDir.resolve(relativePath).resolve(fileName);
