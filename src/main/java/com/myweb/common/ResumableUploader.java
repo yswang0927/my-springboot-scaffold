@@ -75,10 +75,10 @@ public class ResumableUploader {
      * 保存分片数据。
      * @param chunk 当前分片
      * @param chunkBody 文件分片数据
-     * @return true 表示文件上传完成，false 继续上传
+     * @return UploadResult 文件上传的实时结果状态
      * @exception FileUploadException 如果保存分片数据失败则抛出此异常
      */
-    public boolean saveChunk(ResumableChunk chunk, InputStream chunkBody) throws FileUploadException {
+    public UploadResult uploadChunk(final ResumableChunk chunk, InputStream chunkBody) throws FileUploadException {
         if (chunkBody == null) {
             throw new FileUploadException("分片数据不能为空");
         }
@@ -96,8 +96,7 @@ public class ResumableUploader {
             throw e;
         }
 
-        String fileId = cleanFileId(chunk.getFileId());
-        final String fileName = cleanFileName(chunk.getFileName());
+        final String fileId = chunk.getFileId();
         final long fileSize = chunk.getFileSize();
         final int chunkNo = chunk.getChunkNo();
         final long offset = chunk.getChunkStartOffset();
@@ -111,14 +110,18 @@ public class ResumableUploader {
             throw new FileUploadException("文件大小超限：" + this.maxFileSizeBytes);
         }
 
-        UploadTask uploadTask = this.uploadTasksMap.computeIfAbsent(fileId,
-                (id) -> new UploadTask(fileName, chunk.getRelativePath(), chunk.getTotalChunks()));
+        UploadTask uploadTask = this.uploadTasksMap.computeIfAbsent(fileId, (id) -> {
+            final String fileName = cleanFileName(chunk.getFileName());
+            final String relativePath = cleanRelativePath(chunk.getRelativePath());
+            return new UploadTask(fileName, relativePath, chunk.getTotalChunks(), fileSize);
+        });
+
         uploadTask.touch(); // 更新最后活跃时间，避免被定时清理
 
         // 检查分块是否已上传，避免重复写入
         if (uploadTask.isChunkUploaded(chunkNo)) {
             closeQuietly(chunkBody);
-            return uploadTask.isAllChunksUploaded();
+            return uploadTask.uploadResult;
         }
 
         // 生成临时文件路径（上传根目录下的隐藏临时文件）
@@ -142,7 +145,7 @@ public class ResumableUploader {
                                 Files.deleteIfExists(tmpFilePath);
                             } catch (IOException ignored) {}
 
-                            throw new FileUploadException(String.format("为文件 %s 预分配磁盘空间失败：%s", fileName, e.getMessage()));
+                            throw new FileUploadException(String.format("为文件 %s 预分配磁盘空间失败：%s", uploadTask.fileName, e.getMessage()));
                         }
                     }
                     // 标记临时文件已分配磁盘空间
@@ -223,7 +226,7 @@ public class ResumableUploader {
                         // 注意：这里不要立刻移除缓存任务，因为客户端可能会撤销上传，需要提供给后面可能的删除文件使用
                         // 缓存的清理由 cleanup 定时任务处理
                         //this.uploadTasksMap.remove(fileId);
-                        return true;
+                        return uploadTask.uploadResult;
                     } catch (IOException e) {
                         throw new FileUploadException("文件上传完成，重命名失败：" + e.getMessage());
                     }
@@ -233,7 +236,7 @@ public class ResumableUploader {
             }
         }
 
-        return false;
+        return uploadTask.uploadResult;
     }
 
     /**
@@ -427,11 +430,11 @@ public class ResumableUploader {
                     .collect(Collectors.toList());
 
             for (Path statusPath : statusFiles) {
-                // .rsm-<ID>.tmp.<STATUS>
+                // .rsm-<ID>.upload.<STATUS>
                 String statusFileName = statusPath.getFileName().toString();
                 String tmpFileName = statusFileName.substring(0, statusFileName.length() - TMP_STATUS_FILE_SUFFIX.length());
                 String fileId = tmpFileName.substring(TMP_FILE_PREFIX.length(), tmpFileName.length() - TMP_FILE_SUFFIX.length());
-                // 恢复文件预分配标记（既然有 status 文件且 .tmp 存在，说明已分配）
+                // 恢复文件预分配标记（既然有 status 文件且 .upload 存在，说明已分配）
                 Path tmpFile = this.uploadDir.resolve(tmpFileName);
                 if (Files.exists(tmpFile)) {
                     UploadTask task = UploadTask.restoreUploadTask(statusPath);
@@ -455,17 +458,6 @@ public class ResumableUploader {
         }
     }
 
-    private static String cleanFileId(String fileId) {
-        StringBuilder sb = new StringBuilder(fileId.length());
-        for (int i = 0; i < fileId.length(); i++) {
-            char ch = fileId.charAt(i);
-            if (Character.isDigit(ch) || Character.isAlphabetic(ch) || '-' == ch) {
-                sb.append(ch);
-            }
-        }
-        return sb.toString();
-    }
-
     /**
      * Windows 文件名禁止字符:
      * - 绝对禁用（9 个）< > : " / \ | ? *
@@ -476,6 +468,10 @@ public class ResumableUploader {
      * - 不禁止但强烈建议避免：空格、* ? ! $ & () [] { } | \ ` " 等（易被 Shell 误解析）
      */
     static String cleanFileName(String fileName) {
+        if (!hasText(fileName)) {
+            return "";
+        }
+
         StringBuilder sb = new StringBuilder(fileName.length());
         for (int i = 0; i < fileName.length(); i++) {
             char ch = fileName.charAt(i);
@@ -486,7 +482,26 @@ public class ResumableUploader {
             }
             sb.append(ch);
         }
-        return sb.length() > 0 ? sb.toString() : "file_" + System.currentTimeMillis();
+        return sb.toString();
+    }
+
+    static String cleanRelativePath(String relativePath) {
+        if (!hasText(relativePath)) {
+            return "";
+        }
+
+        String[] parts = relativePath.trim().split("/");
+        StringBuilder sb = new StringBuilder(relativePath.length());
+        int i = 0;
+        for (String part : parts) {
+            if (hasText(part)) {
+                if ((i++) > 0) {
+                    sb.append('/');
+                }
+                sb.append(cleanFileName(part));
+            }
+        }
+        return sb.toString();
     }
 
     private void closeQuietly(InputStream body) {
@@ -590,6 +605,7 @@ public class ResumableUploader {
     private static class UploadTask {
         final String fileName;
         final String relativePath;
+        final long fileSize;
         final int totalChunks;
 
         final ReentrantLock lock = new ReentrantLock();
@@ -600,16 +616,19 @@ public class ResumableUploader {
         // 任务是否已完成（所有分块上传并生成正式文件）
         volatile boolean completed;
         private BitSet allChunksBitSet;
+        UploadResult uploadResult;
 
-        UploadTask(String fileName, String relativePath, int totalChunks) {
+        UploadTask(String fileName, String relativePath, int totalChunks, long fileSize) {
             if (totalChunks < 1) {
                 throw new FileUploadException("无效的分块总数: " + totalChunks);
             }
 
             this.fileName = ResumableUploader.hasText(fileName) ? fileName : "unknown-file";
             this.relativePath = ResumableUploader.hasText(relativePath) ? relativePath : "";
+            this.fileSize = fileSize;
             this.totalChunks = totalChunks;
             this.allChunksBitSet = new BitSet(totalChunks);
+            this.uploadResult = new UploadResult(this.fileName, this.relativePath, this.fileSize);
         }
 
         void touch() {
@@ -629,6 +648,7 @@ public class ResumableUploader {
          */
         void markCompleted() {
             this.completed = true;
+            this.uploadResult.setCompleted(true);
         }
 
         boolean isCompleted() {
@@ -690,6 +710,7 @@ public class ResumableUploader {
             try (RandomAccessFile raf = new RandomAccessFile(statusFile.toFile(), "rw")) {
                 raf.writeUTF(fileName);
                 raf.writeUTF(relativePath);
+                raf.writeLong(fileSize);
                 raf.writeInt(totalChunks);
                 byte[] bytes = this.allChunksBitSet.toByteArray();
                 raf.writeInt(bytes.length);
@@ -708,12 +729,13 @@ public class ResumableUploader {
             try (RandomAccessFile raf = new RandomAccessFile(statusFile.toFile(), "r")) {
                 String fileName = raf.readUTF();
                 String relativePath = raf.readUTF();
+                long fileSize = raf.readLong();
                 int totalChunks = raf.readInt();
                 int bitSetLength = raf.readInt();
                 byte[] bitSetBytes = new byte[bitSetLength];
                 raf.readFully(bitSetBytes);
 
-                UploadTask task = new UploadTask(fileName, relativePath, totalChunks);
+                UploadTask task = new UploadTask(fileName, relativePath, totalChunks, fileSize);
                 task.allChunksBitSet = BitSet.valueOf(bitSetBytes);
                 return task;
             } catch (Exception e) {
@@ -722,6 +744,49 @@ public class ResumableUploader {
             return null;
         }
 
+    }
+
+    public static class UploadResult {
+        private final String fileName;
+        private final String relativePath;
+        private final long fileSize;
+        private boolean completed;
+
+        UploadResult(String fileName, String relativePath, long fileSize) {
+            this.fileName = fileName;
+            this.relativePath = relativePath;
+            this.fileSize = fileSize;
+        }
+
+        public String getFileName() {
+            return fileName;
+        }
+
+        public String getRelativePath() {
+            return relativePath;
+        }
+
+        public long getFileSize() {
+            return fileSize;
+        }
+
+        public boolean isCompleted() {
+            return completed;
+        }
+
+        void setCompleted(boolean completed) {
+            this.completed = completed;
+        }
+
+        @Override
+        public String toString() {
+            return "UploadResult{" +
+                    "fileName='" + fileName + '\'' +
+                    ", relativePath='" + relativePath + '\'' +
+                    ", fileSize=" + fileSize +
+                    ", completed=" + completed +
+                    '}';
+        }
     }
 
 }
