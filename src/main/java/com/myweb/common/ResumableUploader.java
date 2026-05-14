@@ -110,11 +110,8 @@ public class ResumableUploader {
             throw new FileUploadException("文件大小超限：" + this.maxFileSizeBytes);
         }
 
-        UploadTask uploadTask = this.uploadTasksMap.computeIfAbsent(fileId, (id) -> {
-            final String fileName = cleanFileName(chunk.getFileName());
-            final String relativePath = cleanRelativePath(chunk.getRelativePath());
-            return new UploadTask(fileName, relativePath, chunk.getTotalChunks(), fileSize);
-        });
+        UploadTask uploadTask = this.uploadTasksMap.computeIfAbsent(fileId, (id) ->
+                new UploadTask(chunk.getFileName(), chunk.getRelativePath(), chunk.getTotalChunks(), fileSize));
 
         uploadTask.touch(); // 更新最后活跃时间，避免被定时清理
 
@@ -623,8 +620,8 @@ public class ResumableUploader {
                 throw new FileUploadException("无效的分块总数: " + totalChunks);
             }
 
-            this.fileName = ResumableUploader.hasText(fileName) ? fileName : "unknown-file";
-            this.relativePath = ResumableUploader.hasText(relativePath) ? relativePath : "";
+            this.fileName = ResumableUploader.hasText(fileName) ? cleanFileName(fileName) : "unknown-file";
+            this.relativePath = ResumableUploader.hasText(relativePath) ? cleanRelativePath(relativePath) : "";
             this.fileSize = fileSize;
             this.totalChunks = totalChunks;
             this.allChunksBitSet = new BitSet(totalChunks);

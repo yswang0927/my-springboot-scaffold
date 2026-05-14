@@ -52,15 +52,15 @@ public class ResumableController implements InitializingBean, DisposableBean {
      * @param request 分片请求
      */
     @PostMapping("/api/resumable-upload")
-    public ResponseEntity<String> uploading(ResumableChunk chunk, HttpServletRequest request) {
+    public ResponseEntity<ResumableUploader.UploadResult> uploading(ResumableChunk chunk, HttpServletRequest request) {
         try (InputStream body = request.getInputStream()) {
             ResumableUploader.UploadResult uploadResult = this.resumableUploader.uploadChunk(chunk, body);
             if (uploadResult.isCompleted()) {
                 System.out.println(">>> 文件上传完成："+ uploadResult.toString());
             }
-            return ResponseEntity.ok("success");
+            return ResponseEntity.ok(uploadResult);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return ResponseEntity.badRequest().body(null);
         }
     }
 
