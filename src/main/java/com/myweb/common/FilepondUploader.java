@@ -256,7 +256,7 @@ public class FilepondUploader {
      * 用于启动定时清理任务，清理过期未完成的上传任务等。
      */
     public void startCleanupTask() {
-        if (this.cleanupTaskStarted.compareAndSet(false, true)) {
+        /*if (this.cleanupTaskStarted.compareAndSet(false, true)) {
             LOG.info(">> Start upload cleanup-schedule-task.");
             ScheduledExecutorService cleanerExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
                 Thread t = new Thread(r, "uploader-cleaner");
@@ -265,7 +265,7 @@ public class FilepondUploader {
             });
             // 定期检查过期任务
             cleanerExecutor.scheduleAtFixedRate(this::cleanExpiredTasks, CLEANUP_INTERVAL, CLEANUP_INTERVAL, CLEANUP_INTERVAL_TIMEUNIT);
-        }
+        }*/
     }
 
     private String generateTempFileName(String fileId) {

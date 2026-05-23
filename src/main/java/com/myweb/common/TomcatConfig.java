@@ -1,11 +1,16 @@
 package com.myweb.common;
 
+import java.io.IOException;
+import java.util.Collections;
+import java.util.List;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+
 import org.apache.catalina.Context;
 import org.apache.catalina.connector.Connector;
 import org.apache.catalina.startup.Tomcat;
+import org.apache.tomcat.util.descriptor.web.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.embedded.tomcat.TomcatServletWebServerFactory;
 import org.springframework.boot.web.embedded.tomcat.TomcatWebServer;
@@ -14,8 +19,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
 import org.springframework.util.StringUtils;
-
-import java.io.IOException;
 
 @Configuration
 public class TomcatConfig {
@@ -47,10 +50,42 @@ public class TomcatConfig {
 
                 return super.getTomcatWebServer(tomcat);
             }
-
         };
 
+        factory.addContextCustomizers(context -> {
+            disableJsp(context);
+        });
+
         return factory;
+    }
+
+    private static void disableJsp(Context context) {
+        // 1. SecurityConstraint：禁止所有角色访问 *.jsp / *.jspx
+        SecurityConstraint constraint = new SecurityConstraint();
+        constraint.setUserConstraint("CONFIDENTIAL");
+        constraint.setAuthConstraint(true);
+
+        SecurityCollection collection = new SecurityCollection();
+        collection.setName("Disable JSP");
+        collection.addPattern("*.jsp");
+        collection.addPattern("*.jspx");
+        collection.addPattern("*.jspf");
+
+        constraint.addCollection(collection);
+
+        context.addConstraint(constraint);
+
+        // 2. JspPropertyGroup：对 *.jsp / *.jspx 禁用 EL 和脚本
+        JspPropertyGroup jspPropertyGroup = new JspPropertyGroup();
+        jspPropertyGroup.addUrlPattern("*.jsp");
+        jspPropertyGroup.addUrlPattern("*.jspx");
+        jspPropertyGroup.setElIgnored("true");      // 禁用 EL 表达式
+        jspPropertyGroup.setScriptingInvalid("true"); // 禁用 Java 脚本
+
+        JspConfigDescriptorImpl jspConfig = new JspConfigDescriptorImpl(
+                List.of(new JspPropertyGroupDescriptorImpl(jspPropertyGroup)),
+                Collections.EMPTY_LIST);
+        context.setJspConfigDescriptor(jspConfig);
     }
 
     static class RootServlet extends HttpServlet {
