@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<assembly xmlns="http://maven.apache.org/plugins/maven-assembly-plugin/assembly/1.1.3"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/plugins/maven-assembly-plugin/assembly/1.1.3 http://maven.apache.org/xsd/assembly-1.1.3.xsd">
+
+    <id>x86_64</id>
+
+    <formats>
+        <!-- 支持的打包格式有:zip\tar\tar.gz\jar\dir\war -->
+        <format>tar.gz</format>
+    </formats>
+
+    <!-- 内嵌一层 finalName 目录 -->
+    <includeBaseDirectory>true</includeBaseDirectory>
+
+    <!--
+    最终内部结构是：
+    app-web/
+        |- jdk-linux-*.tar.gz
+        |- conf/
+        |   |- application.properties
+        |- lib/
+        |   |- app-[version].jar
+        |- app.sh
+    -->
+    <fileSets>
+
+        <!-- 拷贝 JDK -->
+        <fileSet>
+            <directory>${project.build.directory}/tmp</directory>
+            <includes>
+                <include>jdk-linux-${jdk.version}-${jdk.classifier}x64.tar.gz</include>
+            </includes>
+            <outputDirectory>./</outputDirectory>
+        </fileSet>
+
+        <!-- 拷贝 packages-files下准备好的包目录和文件 -->
+        <fileSet>
+            <directory>${basedir}/package-files</directory>
+            <fileMode>0755</fileMode>
+            <includes>
+                <include>app.sh</include>
+            </includes>
+            <outputDirectory>./</outputDirectory>
+        </fileSet>
+
+        <fileSet>
+            <directory>${project.build.outputDirectory}/conf</directory>
+            <outputDirectory>./conf</outputDirectory>
+        </fileSet>
+
+    </fileSets>
+
+    <files>
+        <file>
+            <source>${project.build.outputDirectory}/application.properties</source>
+            <fileMode>0755</fileMode>
+            <outputDirectory>./conf</outputDirectory>
+        </file>
+
+        <file>
+            <source>${project.build.directory}/${project.build.finalName}.jar</source>
+            <outputDirectory>./lib</outputDirectory>
+        </file>
+    </files>
+
+</assembly>

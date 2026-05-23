@@ -17,6 +17,13 @@
 
 	<properties>
 		<java.version>17</java.version>
+		<maven.compiler.source>17</maven.compiler.source>
+		<maven.compiler.target>17</maven.compiler.target>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<project.build.finalName>app-web-${project.version}</project.build.finalName>
+		<dollar>$</dollar>
+		<jdk.version>17.0.19</jdk.version>
+		<jdk.classifier></jdk.classifier> <!-- 空表示oracle官方的，bisheng_ 表示毕昇的 -->
 	</properties>
 
 	<dependencies>
@@ -171,6 +178,7 @@
 	</dependencies>
 
 	<build>
+		<finalName>${project.build.finalName}</finalName>
 		<plugins>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
@@ -307,6 +315,66 @@
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
 			</plugin>
+
+			<!--<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-dependency-plugin</artifactId>
+				<version>3.3.0</version>
+				<executions>
+					<execution>
+						<id>copy-jdk</id>
+						<phase>prepare-package</phase>
+						<goals>
+							<goal>copy</goal>
+						</goals>
+						<configuration>
+							<outputDirectory>${project.build.directory}/tmp</outputDirectory>
+							<artifactItems>
+								<artifactItem>
+									<groupId>openjdk</groupId>
+									<artifactId>jdk-linux</artifactId>
+									<version>${jdk.version}</version>
+									<classifier>${jdk.classifier}x64</classifier>
+									<type>tar.gz</type>
+								</artifactItem>
+
+								<artifactItem>
+									<groupId>openjdk</groupId>
+									<artifactId>jdk-linux</artifactId>
+									<version>${jdk.version}</version>
+									<classifier>${jdk.classifier}aarch64</classifier>
+									<type>tar.gz</type>
+								</artifactItem>
+							</artifactItems>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-assembly-plugin</artifactId>
+				<version>3.4.2</version>
+				<executions>
+					<execution>
+						<id>make-assembly-linux</id>
+						<phase>package</phase>
+						<goals>
+							<goal>single</goal>
+						</goals>
+						<configuration>
+							<appendAssemblyId>true</appendAssemblyId>
+							<runOnlyAtExecutionRoot>false</runOnlyAtExecutionRoot>
+							<outputDirectory>${project.build.directory}</outputDirectory>
+							<descriptors>
+								<descriptor>${basedir}/package-web-assembly-linux-x86_64.xml</descriptor>
+								<descriptor>${basedir}/package-web-assembly-linux-aarch64.xml</descriptor>
+							</descriptors>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>-->
+
 		</plugins>
 	</build>
 
