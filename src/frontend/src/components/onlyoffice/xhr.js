@@ -27,14 +27,14 @@ function createXHRProxy(BaseXHR = globalThis.XMLHttpRequest) {
       this._requestMethod = method;
       this._requestHeaders = new Headers();
       let urlStr = url.toString();
-      try {
+      /*try {
         const u = new URL(urlStr, location.origin);
         if (u.origin === location.origin) {
           if (u.pathname.startsWith("/common/") || u.pathname.startsWith("/sdkjs/") || u.pathname.startsWith("/web-apps/")) {
             urlStr = location.origin + "/assets/onlyoffice" + u.pathname + u.search;
           }
         }
-      } catch (e) {}
+      } catch (e) { }*/
       this._requestUrl = urlStr;
       this._isMocked = false;
       super.open(

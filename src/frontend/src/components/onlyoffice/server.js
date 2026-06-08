@@ -435,7 +435,7 @@ class EditorServer {
       return Response.json({ [pathname]: url });
     }
 
-    if (u.pathname == "/plugins.json") {
+    if (u.pathname.endsWith("/plugins.json")) {
       const state = this.options.getState?.();
       if (state?.plugins == "none") {
         return Response.json({ url: "", pluginsData: [], autostart: [] });

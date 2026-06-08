@@ -1,4 +1,4 @@
-const pluginsBase = "https://office-plugins.ziziyi.com/v9/sdkjs-plugins";
+const pluginsBase = "/assets/onlyoffice/sdkjs-plugins";
 const allPlugins = [
   "ai",
   "apertium",
@@ -48,7 +48,7 @@ const allPlugins = [
   "zotero"
 ];
 const featuredPlugins = [
-  "marketplace",
+  /*"marketplace",
   "ai",
   "youtube",
   "jitsi",
@@ -57,7 +57,7 @@ const featuredPlugins = [
   "languagetool",
   "thesaurus",
   "deepl",
-  "zhipu"
+  "zhipu"*/
 ];
 function getPluginConfigUrl(name) {
   return `${pluginsBase}/${name}/config.json`;
