@@ -1,4 +1,4 @@
-const pluginsBase = "/assets/onlyoffice/sdkjs-plugins";
+const pluginsBase = (window.APP_BASE_URL||"") + "/assets/onlyoffice/sdkjs-plugins";
 const allPlugins = [
   "ai",
   "apertium",

@@ -67,5 +67,18 @@ export default defineConfig({
         }
       }
     }
+  },
+  server: {
+    host: true,
+    port: 5173,
+    open: true,
+    strictPort: true,
+    cors: true,
+    hmr: { overlay: false },
+    watch: {
+      usePolling: false,
+      ignored: ["**/node_modules/**", "**/dist/**", "**/build/**", '**/public/**'],
+    },
+    fs: { cachedChecks: true },
   }
 })

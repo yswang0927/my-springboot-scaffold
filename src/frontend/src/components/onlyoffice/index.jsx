@@ -98,24 +98,23 @@ const OnlyOffice = ({
         const createEditor = () => {
             editor = new window.DocsAPI.DocEditor("placeholder", {
                 document: {
+                    documentType: documentType,
                     fileType: doc.fileType,
                     key: doc.key,
                     title: doc.title,
                     url: doc.url,
                     permissions: {
-                        // TODO: fix PDF edit
                         edit: doc.fileType != "pdf",
                         chat: false,
                         rename: true,
                         protect: true,
                         review: false,
-                        // TODO: fix export to PDF
                         print: false
                     }
                 },
-                documentType: documentType,
                 editorConfig: {
                     lang: language,
+                    region: language,
                     // canCoAuthoring: true,
                     // type: "desktop",
                     coEditing: {

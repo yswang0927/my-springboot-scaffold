@@ -1,4 +1,5 @@
 import { EventEmitter } from "eventemitter3";
+
 class MockSocket {
   constructor(options = {}) {
     this.active = true;
@@ -149,11 +150,14 @@ class MockSocket {
     return this;
   }
 }
+
 function io(url, options) {
   return new MockSocket(options);
 }
+
 const ioWithStatics = io;
-var socket_default = ioWithStatics;
+const socket_default = ioWithStatics;
+
 export {
   MockSocket,
   socket_default as default,

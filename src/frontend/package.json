@@ -18,6 +18,8 @@
     "@milkdown/crepe": "^7.21.1",
     "ahooks": "^3.9.6",
     "axios": "^1.13.2",
+    "dayjs": "^1.11.21",
+    "eventemitter3": "^5.0.4",
     "filepond": "^4.32.11",
     "filepond-plugin-file-validate-size": "^2.2.8",
     "filepond-plugin-file-validate-type": "^1.2.9",
