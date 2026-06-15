@@ -1,18 +1,45 @@
-import { DocumentType } from "./types";
-
 function getFileExt(name) {
   const type = name.split(".").pop() || "";
   return type.toLowerCase();
 }
 
+function deepAssign(target, source) {
+  const t = target;
+  const s = source;
+
+  if (typeof t != "object") {
+    return s;
+  }
+
+  const result = Object.assign({}, t);
+  for (const key of Object.keys(s)) {
+    result[key] = deepAssign(t[key], s[key]);
+  }
+  return result;
+}
+
+function waitForEvent(element, eventType) {
+  return new Promise((resolve) => {
+    element.addEventListener(eventType, () => resolve(), { once: true });
+  });
+}
+
 var AppType = ((AppType2) => {
   AppType2[AppType2["word"] = 1] = "word";
-  AppType2[AppType2["slide"] = 3] = "slide";
   AppType2[AppType2["cell"] = 2] = "cell";
+  AppType2[AppType2["slide"] = 3] = "slide";
   AppType2[AppType2["draw"] = 4] = "draw";
   AppType2[AppType2["pdf"] = 5] = "pdf";
   return AppType2;
 })(AppType || {});
+
+const DOCUMENT_TYPE = {
+  "Word": "word",
+  "Cell": "cell",
+  "Slide": "slide",
+  "Draw": "draw",
+  "Pdf": "pdf"
+};
 
 const docTypeMap = {
   // Document
@@ -31,6 +58,16 @@ const docTypeMap = {
   dotm: 1 /* word */,
   oform: 1 /* word */,
   docxf: 1 /* word */,
+  // Spreadsheet
+  xlsx: 2 /* cell */,
+  xls: 2 /* cell */,
+  ods: 2 /* cell */,
+  csv: 2 /* cell */,
+  xlsm: 2 /* cell */,
+  xltx: 2 /* cell */,
+  xltm: 2 /* cell */,
+  xlsb: 2 /* cell */,
+  ots: 2 /* cell */,
   // Presentation
   pptx: 3 /* slide */,
   ppt: 3 /* slide */,
@@ -42,16 +79,6 @@ const docTypeMap = {
   potm: 3 /* slide */,
   otp: 3 /* slide */,
   odg: 3 /* slide */,
-  // Spreadsheet
-  xlsx: 2 /* cell */,
-  xls: 2 /* cell */,
-  ods: 2 /* cell */,
-  csv: 2 /* cell */,
-  xlsm: 2 /* cell */,
-  xltx: 2 /* cell */,
-  xltm: 2 /* cell */,
-  xlsb: 2 /* cell */,
-  ots: 2 /* cell */,
   // Draw
   vsdx: 4 /* draw */,
   vssx: 4 /* draw */,
@@ -66,13 +93,13 @@ const docTypeMap = {
 function getDocumentType(ext) {
   const code = docTypeMap[ext.toLowerCase()];
   const type = AppType[code];
-  return type || DocumentType.Word;
+  return type || DOCUMENT_TYPE.Word;
 }
 
-
+// 注意这里的 `/assets/onlyoffice` 访问前缀, 根据实际情况自行修改
 const ONLYOFFICE_ROOT = (window.APP_BASE_URL || "") + "/assets/onlyoffice";
-const ONLYOFFICE_PRELOAD_HTML = "/web-apps/apps/api/documents/preload.html";
-const ONLYOFFICE_API_JS = "/web-apps/apps/api/documents/api.js";
+const ONLYOFFICE_API_JS = ONLYOFFICE_ROOT + "/web-apps/apps/api/documents/api.js";
+const ONLYOFFICE_PRELOAD_HTML = ONLYOFFICE_ROOT + "/web-apps/apps/api/documents/preload.html";
 
 export {
   ONLYOFFICE_ROOT,
@@ -81,5 +108,7 @@ export {
   AppType,
   docTypeMap,
   getDocumentType,
-  getFileExt
+  getFileExt,
+  deepAssign,
+  waitForEvent
 };

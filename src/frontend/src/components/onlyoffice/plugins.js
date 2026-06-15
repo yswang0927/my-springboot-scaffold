@@ -59,9 +59,11 @@ const featuredPlugins = [
   "deepl",
   "zhipu"*/
 ];
+
 function getPluginConfigUrl(name) {
   return `${pluginsBase}/${name}/config.json`;
 }
+
 function getPluginsData(list) {
   return {
     url: "",
@@ -69,6 +71,7 @@ function getPluginsData(list) {
     autostart: []
   };
 }
+
 export {
   allPlugins,
   featuredPlugins,

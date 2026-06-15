@@ -4,6 +4,15 @@ import { emptyDocx, emptyPdf, emptyPptx, emptyXlsx } from "./empty";
 import { getDocumentType, getFileExt } from "./utils";
 import { allPlugins, featuredPlugins, getPluginsData } from "./plugins";
 
+// 这个版本号很重要, 当要升级editor版本时,这里需要同步修改;
+// 否则会提示: 版本已更新,需要重新加载页面. 页面无法显示编辑器
+const ONLYOFFICE_VERSION = "9.4.1";
+
+function randomId() {
+  return Math.random().toString(36).slice(2);
+  //return Math.random().toString(36).substring(2, 9);
+}
+
 function mergeBuffers(buffers) {
   const totalLength = buffers.reduce((acc, buffer) => acc + buffer.length, 0);
   const mergedBuffer = new Uint8Array(totalLength);
@@ -15,18 +24,12 @@ function mergeBuffers(buffers) {
   return mergedBuffer;
 }
 
-function randomId() {
-  return Math.random().toString(36).substring(2, 9);
-}
-
 function getUrl(data, type) {
   const blob = new Blob([data], {
     type: type || "application/octet-stream"
   });
   return URL.createObjectURL(blob);
 }
-
-const ONLYOFFICE_VERSION = "9.2.1";
 
 class EditorServer {
   constructor(options = {}) {

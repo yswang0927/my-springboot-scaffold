@@ -8,28 +8,17 @@ class MockSocket {
     this.recovered = false;
     this.id = "";
     this.io = {
-      setOpenToken: () => {
-      },
-      setSessionToken: () => {
-      },
-      on: () => {
-      },
-      reconnectionAttempts: () => {
-      },
-      reconnectionDelay: () => {
-      },
-      reconnectionDelayMax: () => {
-      },
-      timeout: () => {
-      },
-      transports: () => {
-      },
-      upgrade: () => {
-      },
-      upgradeTransport: () => {
-      },
-      upgradeTimeout: () => {
-      }
+      setOpenToken: () => {},
+      setSessionToken: () => {},
+      on: () => {},
+      reconnectionAttempts: () => {},
+      reconnectionDelay: () => {},
+      reconnectionDelayMax: () => {},
+      timeout: () => {},
+      transports: () => {},
+      upgrade: () => {},
+      upgradeTransport: () => {},
+      upgradeTimeout: () => {}
     };
     this._clientEmitter = new EventEmitter();
     this._serverEmitter = new EventEmitter();
@@ -47,38 +36,46 @@ class MockSocket {
     this._debug = options.debug ?? true;
     this.connect();
   }
+
   static {
     this._staticEmitter = new EventEmitter();
   }
+
   static on(event, listener) {
     MockSocket._staticEmitter.on(event, listener);
   }
+
   static off(event, listener) {
     MockSocket._staticEmitter.off(event, listener);
   }
+
   _log(...args) {
     if (this._debug) {
       console.log("[MockSocket]", ...args);
     }
   }
+
   open() {
     return this.connect();
   }
+
   compress() {
   }
+
   /**
    * Simulates connection establishment and generates a new Session ID.
    */
   connect() {
     this.connected = true;
     this.disconnected = false;
-    this.id = Math.random().toString(36).substring(2, 15);
+    this.id = Math.random().toString(36).slice(2);
     setTimeout(() => {
       this._trigger("connect");
       MockSocket._staticEmitter.emit("connect", { socket: this });
     }, 0);
     return this;
   }
+
   disconnect() {
     this.connected = false;
     this.disconnected = true;
@@ -86,9 +83,11 @@ class MockSocket {
     MockSocket._staticEmitter.emit("disconnect", { socket: this });
     return this;
   }
+
   close() {
     return this.disconnect();
   }
+
   /**
    * Triggers local listeners (internal helper).
    * Used to simulate incoming server events.
@@ -98,6 +97,7 @@ class MockSocket {
     this._clientEmitter.emit(event, ...args);
     return this;
   }
+
   // --- Client API ---
   /**
    * Registers a listener for an event from the server.
@@ -106,6 +106,7 @@ class MockSocket {
     this._clientEmitter.on(event, listener);
     return this;
   }
+
   /**
    * Registers a one-time listener for an event from the server.
    */
@@ -113,6 +114,7 @@ class MockSocket {
     this._clientEmitter.once(event, listener);
     return this;
   }
+
   /**
    * Removes a listener for an event.
    */
@@ -120,6 +122,7 @@ class MockSocket {
     this._clientEmitter.off(event, listener);
     return this;
   }
+
   /**
    * Removes all listeners, or those of the specified event.
    */
@@ -127,6 +130,7 @@ class MockSocket {
     this._clientEmitter.removeAllListeners(event);
     return this;
   }
+
   /**
    * Sends a message to the server using the 'message' event.
    * This is a shorthand for `emit('message', ...args)`.
@@ -136,6 +140,7 @@ class MockSocket {
     this.emit("message", ...args);
     return this;
   }
+
   /**
    * Sends a message to the server.
    * First tries global middlewares, then instance handler defined by `serverSideOn`.

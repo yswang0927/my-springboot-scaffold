@@ -42,7 +42,7 @@ const OnlyOffice = ({
     }, []);
 
     useLayoutEffect(() => {
-        const apiUrl = ONLYOFFICE_ROOT + ONLYOFFICE_API_JS;
+        const apiUrl = ONLYOFFICE_API_JS;
         const searchParams = new URLSearchParams(window.location.search);
         const fileId = searchParams.get("fileId");
         const newDoc = searchParams.get("new");
@@ -109,14 +109,13 @@ const OnlyOffice = ({
                         rename: true,
                         protect: true,
                         review: false,
-                        print: false
+                        print: true
                     }
                 },
                 editorConfig: {
                     lang: language,
                     region: language,
                     // canCoAuthoring: true,
-                    // type: "desktop",
                     coEditing: {
                         mode: "fast",
                         change: false
@@ -129,6 +128,7 @@ const OnlyOffice = ({
                     customization: {
                         help: false,
                         about: false,
+                        feedback: false,
                         hideRightMenu: true,
                         uiTheme: theme,
                         features: {
@@ -136,6 +136,7 @@ const OnlyOffice = ({
                                 change: false
                             }
                         },
+                        suggestFeature: false
                         // anonymous: {
                         //   request: false,
                         //   label: "Guest",
@@ -239,7 +240,7 @@ const OnlyOffice = ({
     return <div style={{ position: "relative", width: "100%", height: "100%" }}>
         <div style={{ position: "absolute", left: 0, top: 0, right: 0, bottom: 0 }}>
             <div id="placeholder">
-                <iframe style={{ width: 0, height: 0, visibility: 'hidden' }} src={ONLYOFFICE_ROOT + ONLYOFFICE_PRELOAD_HTML} />
+                <iframe style={{ width: 0, height: 0, visibility: 'hidden' }} src={ONLYOFFICE_PRELOAD_HTML} />
             </div>
         </div>
     </div>;

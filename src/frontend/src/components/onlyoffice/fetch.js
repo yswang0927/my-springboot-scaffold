@@ -11,6 +11,16 @@ function createFetchProxy(target = globalThis.fetch) {
     "/resources/numbering/multilevel-lists.json": BASE_URL_PREFIX + "/web-apps/apps/documenteditor/main",
     "/common/main/resources/alphabetletters/alphabetletters.json": BASE_URL_PREFIX + "/web-apps/apps",
     "/common/main/resources/alphabetletters/qwertyletters.json": BASE_URL_PREFIX + "/web-apps/apps",
+    "/resources/formula-lang/zh.json": BASE_URL_PREFIX + "/web-apps/apps/spreadsheeteditor/main",
+    "/resources/formula-lang/zh_desc.json": BASE_URL_PREFIX + "/web-apps/apps/spreadsheeteditor/main",
+    "/resources/formula-lang/zh-tw.json": BASE_URL_PREFIX + "/web-apps/apps/spreadsheeteditor/main",
+    "/resources/formula-lang/zh-tw_desc.json": BASE_URL_PREFIX + "/web-apps/apps/spreadsheeteditor/main",
+    "/resources/formula-lang/en.json": BASE_URL_PREFIX + "/web-apps/apps/spreadsheeteditor/main",
+    "/resources/formula-lang/en_desc.json": BASE_URL_PREFIX + "/web-apps/apps/spreadsheeteditor/main",
+    "/resources/formula-lang/ja.json": BASE_URL_PREFIX + "/web-apps/apps/spreadsheeteditor/main",
+    "/resources/formula-lang/ja_desc.json": BASE_URL_PREFIX + "/web-apps/apps/spreadsheeteditor/main",
+    "/resources/formula-lang/ko.json": BASE_URL_PREFIX + "/web-apps/apps/spreadsheeteditor/main",
+    "/resources/formula-lang/ko_desc.json": BASE_URL_PREFIX + "/web-apps/apps/spreadsheeteditor/main",
   };
 
   const proxy = (async (input, init) => {
@@ -37,6 +47,7 @@ function createFetchProxy(target = globalThis.fetch) {
     } catch (e) {
       return BaseFetch(input, init);
     }
+
     try {
       for (const mw of middlewares) {
         const response = await mw(request.clone());
@@ -48,16 +59,21 @@ function createFetchProxy(target = globalThis.fetch) {
       console.error("ProxyFetch middleware error:", err);
       return BaseFetch(request);
     }
+
     return BaseFetch(request);
   });
+
   proxy.use = (middleware) => {
     middlewares.push(middleware);
   };
+
   proxy.clearMiddlewares = () => {
     middlewares.length = 0;
   };
+
   return proxy;
 }
+
 export {
   createFetchProxy
 };
