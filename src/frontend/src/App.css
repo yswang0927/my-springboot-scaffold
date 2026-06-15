@@ -11,3 +11,59 @@ svg.lucide {
   stroke-width: 1.75;
   vertical-align: middle;
 }
+
+/* 通用的layout-resizer样式 */
+.layout-resizer {
+  position: absolute;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.layout-resizer::after {
+  content: '';
+  display: block;
+  width: 4px;
+  height: 32px;
+  border-radius: 2px;
+}
+.layout-resizer.dragging::after,
+.layout-resizer:hover::after {
+}
+.layout-resizer[data-region="left"] {
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  margin-right: -3px;
+  cursor: col-resize;
+}
+.layout-resizer[data-region="right"] {
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  margin-left: -3px;
+  cursor: col-resize;
+}
+.layout-resizer[data-region="top"] {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 6px;
+  margin-bottom: -3px;
+  cursor: row-resize;
+}
+.layout-resizer[data-region="bottom"] {
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 6px;
+  margin-top: -3px;
+  cursor: row-resize;
+}
+.layout-resizer[data-region="top"]::after,
+.layout-resizer[data-region="bottom"]::after {
+  height: 2px;
+  width: 32px;
+}

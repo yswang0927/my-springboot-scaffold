@@ -62,6 +62,13 @@ export const joinUrl = function() {
  * </div>
  *
  * new LayoutResizer({
+ *  key: "resizer1", // 如果配置了,则可以自动记忆
+ *  trigger: document.querySelector('.layout1 .layout-resizer'),
+ *  target: document.querySelector('.layout1 .layout-resizer').parentElement
+ * });
+ *
+ * // 或者通过 onResizing 自己写resize目标方式
+ * new LayoutResizer({
  *  trigger: document.querySelector('.layout1 .layout-resizer'),
  *  onResizing: (w) => {
  *      document.querySelector('.layout1 .layout-resizer').parentElement.style.width = w + 'px';
@@ -88,52 +95,84 @@ export const joinUrl = function() {
  *
  * 示例3(上下参照示例1,2类似: data-region="top|bottom").
  */
-class LayoutResizer {
+export class LayoutResizer {
     constructor(options) {
-        this.trigger = options.trigger;
-        this.onResizing = options.onResizing || (() => {});
-        this.onResizeStart = options.onResizeStart || (() => {});
-        this.onResizeEnd = options.onResizeEnd || (() => {});
+        const opts = (typeof options === 'object') ? options : {};
+        this.trigger = opts.trigger; // [必须]定义resizer手柄是哪个DOM元素
+        this.target = opts.target;   // [可选]定义resize目标DOM元素, 如果未定义, 则需要自己在 `onResizing()` 函数中写resize逻辑
+        this.onResizeStart = opts.onResizeStart || (() => {});
+        this.onResizing = opts.onResizing || (() => {});
+        this.onResizeEnd = opts.onResizeEnd || (() => {});
+
+        if (this.trigger && typeof this.trigger === 'string') {
+            this.trigger = document.querySelector(this.trigger);
+        }
 
         if (!this.trigger) {
             console.warn('LayoutResizer: 未找到触发拖拽的 DOM 元素。');
             return;
         }
 
-        // 1. 获取区域，默认为左侧
-        this.region = this.trigger.getAttribute('data-region') || 'left';
-        this.dir = ['top', 'bottom'].includes(this.region) ? 'vertical' : 'horizontal';
+        if (this.target && typeof this.target === 'string') {
+            this.target = document.querySelector(this.target);
+        }
 
-        // 3. 读取范围限制
-        this.min = options.min ?? Number(this.trigger.getAttribute('data-min')) ?? 0;
-        this.max = options.max ?? Number(this.trigger.getAttribute('data-max')) ?? Infinity;
+        // 获取区域，默认为左侧
+        this._region = this.trigger.getAttribute('data-region') || 'left';
+        this._dir = ['top', 'bottom'].includes(this._region) ? 'vertical' : 'horizontal';
+
+        // 范围限制
+        let minVal = Number(opts.hasOwnProperty('min') ? opts.min : this.trigger.getAttribute('data-min'));
+        let maxVal = Number(opts.hasOwnProperty('max') ? opts.max : this.trigger.getAttribute('data-max'));
+        this.min = isNaN(minVal) ? 0 : minVal;
+        this.max = isNaN(maxVal) ? 99999 : maxVal;
+
+        // 用于自动记忆上一次resize的大小
+        this._key = opts.key ? "layout_resizer_"+ opts.key : null;
 
         // 绑定上下文
         this._handleMouseDown = this._handleMouseDown.bind(this);
         this._handleMouseMove = this._handleMouseMove.bind(this);
         this._handleMouseUp = this._handleMouseUp.bind(this);
 
+        this._currentSize = 0;
         this._maskElement = null;
 
         this.init();
     }
 
     init() {
-        this.trigger.addEventListener('mousedown', this._handleMouseDown);
+        requestAnimationFrame(() => {
+            this.trigger.addEventListener('mousedown', this._handleMouseDown);
+
+            // 从记忆恢复
+            if (this._key) {
+                var savedSize = window.localStorage.getItem(this._key);
+                if (savedSize !== null) {
+                    savedSize = parseInt(savedSize);
+                    if (isNaN(savedSize)) {
+                        window.localStorage.removeItem(this._key);
+                        return;
+                    }
+                    this._resizeTarget(savedSize);
+                }
+            }
+        });
     }
 
     _handleMouseDown(e) {
         e.preventDefault();
-        this.startX = e.clientX;
-        this.startY = e.clientY;
+        this._startX = e.clientX;
+        this._startY = e.clientY;
 
-        const rect = this.trigger.parentElement.getBoundingClientRect();
-        this.startWidth = rect.width;
-        this.startHeight = rect.height;
+        const rect = (this.target || this.trigger.parentElement).getBoundingClientRect();
+        this._startWidth = rect.width;
+        this._startHeight = rect.height;
 
+        this._currentSize = (this._dir === 'horizontal') ? this._startWidth : this._startHeight;
         this._createMask();
-        this.onResizeStart();
-
+        this.onResizeStart(e);
+        this.trigger.classList.add('dragging');
         document.body.style.userSelect = 'none';
 
         window.addEventListener('mousemove', this._handleMouseMove);
@@ -143,35 +182,52 @@ class LayoutResizer {
     _handleMouseMove(e) {
         let currentSize;
 
-        if (this.dir === 'horizontal') {
-            const deltaX = e.clientX - this.startX;
+        if (this._dir === 'horizontal') {
+            const deltaX = e.clientX - this._startX;
             // right 减，left 加
-            currentSize = this.region === 'right' ? this.startWidth - deltaX : this.startWidth + deltaX;
+            currentSize = this._region === 'right' ? this._startWidth - deltaX : this._startWidth + deltaX;
         } else {
-            const deltaY = e.clientY - this.startY;
+            const deltaY = e.clientY - this._startY;
             // bottom 减，top 加
-            currentSize = this.region === 'bottom' ? this.startHeight - deltaY : this.startHeight + deltaY;
+            currentSize = this._region === 'bottom' ? this._startHeight - deltaY : this._startHeight + deltaY;
         }
 
         // 边界限制
-        currentSize = Math.max(this.min, Math.min(this.max, currentSize));
+        currentSize = this._currentSize = Math.max(this.min, Math.min(this.max, currentSize));
+
+        this._resizeTarget(currentSize);
 
         if (typeof this.onResizing === 'function') {
-            this.onResizing(currentSize, this.region);
+            this.onResizing(currentSize, this._region, e);
         }
     }
 
-    _handleMouseUp() {
-        this._removeMask();
-        this.onResizeEnd();
-        document.body.style.userSelect = '';
+    _handleMouseUp(e) {
         window.removeEventListener('mousemove', this._handleMouseMove);
         window.removeEventListener('mouseup', this._handleMouseUp);
+        this._removeMask();
+        this.onResizeEnd(this._currentSize, e);
+        this.trigger.classList.remove('dragging');
+        document.body.style.userSelect = '';
+        // 记忆
+        if (this._key) {
+            window.localStorage.setItem(this._key, this._currentSize);
+        }
+    }
+
+    _resizeTarget(size) {
+        if (this.target) {
+            if (this._dir === 'horizontal') {
+                this.target.style.width = this.target.style.minWidth = size + 'px';
+            } else {
+                this.target.style.height = this.target.style.minHeight = size + 'px';
+            }
+        }
     }
 
     // 创建全屏透明遮罩
     _createMask() {
-        const mask = document.createElement('div');
+        const mask = this._maskElement = document.createElement('div');
         Object.assign(mask.style, {
             position: 'fixed',
             top: 0,
@@ -180,25 +236,24 @@ class LayoutResizer {
             height: '100vh',
             zIndex: 999999, // 确保在最上层，挡住 iframe 和其他业务组件
             backgroundColor: 'transparent',
-            cursor: this.dir === 'horizontal' ? 'col-resize' : 'row-resize',
+            cursor: this._dir === 'horizontal' ? 'col-resize' : 'row-resize',
         });
 
         document.body.appendChild(mask);
-        this.maskElement = mask;
     }
     _removeMask() {
-        if (this.maskElement) {
-            this.maskElement.remove();
-            this.maskElement = null;
+        if (this._maskElement) {
+            this._maskElement.remove();
+            this._maskElement = null;
         }
     }
 
     destroy() {
-        console.log('>> LayoutResizer destroyed.');
-        this.trigger.removeEventListener('mousedown', this._handleMouseDown);
+        if (this.trigger) {
+            this.trigger.removeEventListener('mousedown', this._handleMouseDown);
+        }
         window.removeEventListener('mousemove', this._handleMouseMove);
         window.removeEventListener('mouseup', this._handleMouseUp);
+        console.log(">> LayoutResizer destroyed.");
     }
 }
-
-export { LayoutResizer };
