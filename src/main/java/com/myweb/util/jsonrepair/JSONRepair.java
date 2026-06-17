@@ -4,6 +4,41 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
+ * 将错误格式的JSON修复为正确格式.
+ * <p>示例:</p>
+ * <pre><code>
+ * String json = """
+ *            {"users": [{"name": "John", "age": 30}, {"name": "Jane"
+ *            """;
+ * try {
+ *      String repairedJson = JSONRepair.repair(json);
+ * } catch (JSONRepairException e) {
+ *     // 如果无法修复则抛出此异常
+ * }
+ * </code></pre>
+ *
+ * <p>支持以下问题的修复:</p>
+ * <pre>
+ * 1. Add missing quotes around keys
+ * 2. Add missing escape characters
+ * 3. Add missing commas
+ * 4. Add missing closing brackets
+ * 5. Repair truncated JSON
+ * 6. Replace single quotes with double quotes
+ * 7. Replace special quote characters like “...” with regular double quotes
+ * 8. Replace special white space characters with regular spaces
+ * 9. Replace Python constants None, True, and False with null, true, and false
+ * 10. Strip trailing commas
+ * 11. Strip comments
+ * 12. Strip fenced code blocks like  ```json and ```
+ * 13. Strip ellipsis in arrays and objects like [1, 2, 3, ...]
+ * 14. Strip JSONP notation like callback({ ... })
+ * 15. Strip escape characters from an escaped string like {\"stringified\": \"content\"}
+ * 16. Strip MongoDB data types like NumberLong(2) and ISODate("2012-12-19T06:01:17.171Z")
+ * 17. Concatenate strings like "long text" + "more text on next line"
+ * 18. Turn newline delimited JSON into a valid JSON array
+ * </pre>
+ *
  * 翻译自: https://github.com/josdejong/jsonrepair/blob/main/src/regular/jsonrepair.ts
  */
 public class JSONRepair {
