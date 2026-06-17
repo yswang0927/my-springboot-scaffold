@@ -87,18 +87,24 @@ public class JsonObjectMapper extends ObjectMapper {
         }
     }
 
-    public static void customizeObjectMapper(ObjectMapper objectMapper, String timeZone) {
-        objectMapper.setDateFormat(new SimpleDateFormat(DATE_TIME_FORMAT));
-        objectMapper.setTimeZone(TimeZone.getTimeZone(ZoneId.of(timeZone)));
-        objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-        objectMapper.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+    public static void customizeObjectMapper(ObjectMapper mapper, String timeZone) {
+        mapper.setDateFormat(new SimpleDateFormat(DATE_TIME_FORMAT));
+        mapper.setTimeZone(TimeZone.getTimeZone(ZoneId.of(timeZone)));
+        mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        mapper.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+
         // jackson在进行序列化时，会默认使用getter方法获取字段进行序列化，这是不想要的，只要序列化Field
-        objectMapper.setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.NONE);
-        objectMapper.setVisibility(PropertyAccessor.GETTER, JsonAutoDetect.Visibility.NONE);
-        objectMapper.setVisibility(PropertyAccessor.IS_GETTER, JsonAutoDetect.Visibility.NONE);
-        objectMapper.setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY);
-        objectMapper.setVisibility(PropertyAccessor.CREATOR, JsonAutoDetect.Visibility.ANY);
-        objectMapper.setVisibility(PropertyAccessor.SETTER, JsonAutoDetect.Visibility.ANY);
+        mapper.setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.NONE);
+        mapper.setVisibility(PropertyAccessor.GETTER, JsonAutoDetect.Visibility.NONE);
+        mapper.setVisibility(PropertyAccessor.IS_GETTER, JsonAutoDetect.Visibility.NONE);
+        mapper.setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY);
+        mapper.setVisibility(PropertyAccessor.CREATOR, JsonAutoDetect.Visibility.ANY);
+        mapper.setVisibility(PropertyAccessor.SETTER, JsonAutoDetect.Visibility.ANY);
+
+        // Allow unquoted keys, single quotes, and trailing commas
+        mapper.configure(JsonParser.Feature.ALLOW_UNQUOTED_FIELD_NAMES, true);
+        mapper.configure(JsonParser.Feature.ALLOW_SINGLE_QUOTES, true);
+        mapper.configure(JsonParser.Feature.ALLOW_TRAILING_COMMA, true);
 
         // 统一的自定义模块
         SimpleModule simpleModule = new SimpleModule();
@@ -120,7 +126,7 @@ public class JsonObjectMapper extends ObjectMapper {
         simpleModule.addSerializer(BigDecimal.class, new ToStringSerializer(BigDecimal.class));
         */
 
-        objectMapper.registerModules(new JavaTimeModule(), simpleModule);
+        mapper.registerModules(new JavaTimeModule(), simpleModule);
     }
 
     static class DateDeserializer2 extends JsonDeserializer<Date> {
