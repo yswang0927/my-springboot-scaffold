@@ -13,13 +13,15 @@ import java.util.List;
  */
 public class StartNode extends AbstractNode {
 
+    public static final String NODE_TYPE = "start";
+
     public StartNode(GNode gNode) {
         super(gNode);
     }
 
     @Override
     public String getType() {
-        return "start";
+        return NODE_TYPE;
     }
 
     @Override

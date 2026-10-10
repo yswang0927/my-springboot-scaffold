@@ -15,6 +15,7 @@ import com.myweb.workflow.exception.FlowSkipException;
 import com.myweb.workflow.graph.GNode;
 import com.myweb.workflow.graph.GNodeInput;
 import com.myweb.workflow.graph.Graph;
+import com.myweb.workflow.nodes.AbstractNode;
 import com.myweb.workflow.nodes.StartNode;
 
 /**
@@ -29,6 +30,8 @@ public class FlowExecutorPro implements AutoCloseable {
 
     private static final int TASK_POLL_TIMEOUT_SECONDS = 2; // 缩短轮询时间以便更快响应状态变化
     private static final int SHUTDOWN_AWAIT_SECONDS = 10;
+    // 线程数上限：节点多为 I/O 阻塞型，并行度按 DAG 宽度设置而非 CPU 核数，但需防止线程数爆炸
+    private static final int MAX_POOL_SIZE_CEILING = 256;
 
     // 节点信息
     private final ConcurrentMap<String, TaskNode> runNodes = new ConcurrentHashMap<>();
@@ -52,13 +55,21 @@ public class FlowExecutorPro implements AutoCloseable {
     // 执行完成的节点 (包括 Success, Failed, Skipped, UpstreamFailed)
     private final Set<String> completedNodes = ConcurrentHashMap.newKeySet();
 
+    // 被上游分支节点显式排除的下游节点 -> 排除原因(粘性)。
+    // 这些节点不会因触发规则而运行，需等待"所有上游都已表态"(入度归零)后再统一标记为 SKIPPED
+    // 并向下游传播，避免菱形依赖下"上游未全部表态即传播"造成的过早终结与入度计数错乱。
+    private final ConcurrentMap<String, String> branchExcludedNodes = new ConcurrentHashMap<>();
+
     private final Object stateLock = new Object();
     private volatile ExecutionState executionState = ExecutionState.READY;
 
     private final ExecutorCompletionService<NodeExecutionResult> executorService;
     private final ScheduledExecutorService retryExecutorService;
     private final ExecutionListener executionListener;
-    private ExecutorService threadPoolExecutor;
+    
+    // 区分自管理和外部传入的 executor
+    private final ExecutorService managedExecutor;  // 自己创建的，需要关闭
+    private final ExecutorService actualExecutor;             // 实际使用的（可能是外部传入）
 
     private final Graph dagGraph;
 
@@ -79,16 +90,19 @@ public class FlowExecutorPro implements AutoCloseable {
         this.dagGraph.initialize(); // 确保图已初始化
 
         if (executor == null) {
-            final int maxParallel = this.dagGraph.getMaxParallelism();
-            final int cpuCores = Runtime.getRuntime().availableProcessors();
-            final int corePoolSize = Math.max(1, Math.min(maxParallel / 2, cpuCores / 2));
-            final int maxPoolSize = Math.min(maxParallel, cpuCores);
-            this.threadPoolExecutor = new ThreadPoolExecutor(
-                    corePoolSize,
-                    maxPoolSize,
+            // 节点执行以 I/O 阻塞为主(HTTP/LLM)，并发度应由 DAG 最大并行宽度决定，而非 CPU 核数；
+            // 同时设置上限，避免超宽 DAG 导致线程数爆炸。
+            final int maxParallel = Math.max(1, this.dagGraph.getMaxParallelism());
+            final int poolSize = Math.min(maxParallel, MAX_POOL_SIZE_CEILING);
+
+            final ThreadPoolExecutor tpe = new ThreadPoolExecutor(
+                    poolSize,
+                    poolSize,
                     60L,
                     TimeUnit.SECONDS,
-                    new LinkedBlockingQueue<>(maxParallel * 2),
+                    // 无界队列：就绪任务数不会超过 DAG 宽度，任务不会因拒绝而在调用线程
+                    // (主轮询线程/重试调度线程)内联执行而造成阻塞
+                    new LinkedBlockingQueue<>(),
                     new ThreadFactory() {
                         private final AtomicLong tn = new AtomicLong(0);
                         @Override
@@ -98,13 +112,19 @@ public class FlowExecutorPro implements AutoCloseable {
                                     LOG.error(">> ERROR: Flow-Executor thread<{}> exception: ", thread.getName(), e));
                             return t;
                         }
-                    },
-                    new ThreadPoolExecutor.CallerRunsPolicy()
+                    }
             );
+            // 允许核心线程在空闲时超时回收，避免长期占用线程资源
+            tpe.allowCoreThreadTimeOut(true);
+            this.managedExecutor = tpe;
+            this.actualExecutor = tpe;
+        } else {
+            this.managedExecutor = null;  // 外部提供，不由我们管理
+            this.actualExecutor = executor;
         }
 
         this.executionListener = listener != null ? listener : new DefaultExecutionListener();
-        this.executorService = new ExecutorCompletionService<>(executor != null ? executor : this.threadPoolExecutor);
+        this.executorService = new ExecutorCompletionService<>(this.actualExecutor);
         this.retryExecutorService = Executors.newSingleThreadScheduledExecutor();
 
         this.initializeNodes();
@@ -126,11 +146,17 @@ public class FlowExecutorPro implements AutoCloseable {
         this.runNodes.values().forEach(n -> n.setTaskState(TaskState.PENDING));
         this.retryCounts.values().forEach(counter -> counter.set(0));
         this.readyQueue.clear();
+        // 取消上一轮可能仍在执行的遗留任务(如 PAUSE/异常退出时未跑完的并行任务),
+        // 避免其在复用后回写新的共享上下文, 造成状态竞态。
+        this.runningFutures.values().forEach(f -> f.cancel(true));
         this.runningFutures.clear();
         this.future2NodeIdMap.clear();
         this.completedTasksNum.set(0);
+        // 重试调度计数同样需复位, 否则残留非零会破坏主循环"全部结束"的退出判定。
+        this.scheduledRetryTasksNum.set(0);
         this.failedTasks.clear();
         this.completedNodes.clear();
+        this.branchExcludedNodes.clear();
     }
 
     private void initializeReadyQueue() {
@@ -162,19 +188,22 @@ public class FlowExecutorPro implements AutoCloseable {
         try {
             this.executionListener.onFlowStart();
         } catch (Exception e) {
-            LOG.error("Start listener error", e);
+            LOG.error(">> ERROR: Flow start listener threw exception", e);
+            // 注意：监听器异常不应中断流程执行，但记录错误以便排查
         }
 
         FlowExecutionResult flowExecutionResult = new FlowExecutionResult();
         flowExecutionResult.setStartTime(Instant.now());
 
-        // 重置状态
-        resetExecutionState();
-
+        // 复位运行态并进入 RUNNING。"校验-复位-置位"整体置于 stateLock 内以保证原子性:
+        // 1) 防止并发重复 execute;
+        // 2) executionState 在上一轮被 finalize 置为终态(COMPLETED/FAILED/CANCELLED/PAUSED)后, 允许实例复用重新进入 READY 流程。
         synchronized (this.stateLock) {
-            if (this.executionState != ExecutionState.READY) {
-                throw new FlowExecuteException("Executor state invalid: " + this.executionState);
+            if (this.executionState == ExecutionState.RUNNING) {
+                throw new FlowExecuteException("Executor is already running: " + this.executionState);
             }
+            // 重置状态(入度/节点状态/计数器/各类队列与集合), 支持执行器复用
+            resetExecutionState();
             this.executionState = ExecutionState.RUNNING;
         }
 
@@ -195,8 +224,22 @@ public class FlowExecutorPro implements AutoCloseable {
                         submitReadyTasks(context);
                         continue;
                     }
+
                     // 所有任务都结束(包括重试队列)，退出循环
                     if (this.runningFutures.isEmpty() && this.readyQueue.isEmpty() && this.scheduledRetryTasksNum.get() == 0) {
+                        // 检查是否有节点未完成
+                        if (this.completedTasksNum.get() < this.runNodes.size()) {
+                            LOG.warn(">> WARNING: Execution loop exited early. Completed: {}, Total: {}, Missing: {}",
+                                    this.completedTasksNum.get(),
+                                    this.runNodes.size(),
+                                    this.runNodes.size() - this.completedTasksNum.get());
+                            // 列出未完成的节点以便调试
+                            Set<String> uncompletedNodes = new HashSet<>(this.runNodes.keySet());
+                            uncompletedNodes.removeAll(this.completedNodes);
+                            if (!uncompletedNodes.isEmpty()) {
+                                LOG.warn(">> Uncompleted nodes: {}", uncompletedNodes);
+                            }
+                        }
                         break;
                     }
                     continue;
@@ -206,36 +249,19 @@ public class FlowExecutorPro implements AutoCloseable {
                 if (finishedNodeId == null) {
                     continue;
                 }
+
                 this.runningFutures.remove(finishedNodeId);
 
                 try {
                     NodeExecutionResult taskResult = completedFuture.get();
                     handleTaskCompletion(finishedNodeId, taskResult, context);
                 } catch (ExecutionException e) {
-                    // 拆包获取真实的业务异常
+                    // 拆包获取真实的业务异常，并按控制流类型分发
                     Throwable cause = e.getCause();
-
                     NodeExecutionResult execResult = NodeExecutionResult.failed(cause)
                             .setNodeId(finishedNodeId)
                             .setEndTime(Instant.now());
-
-                    if (cause instanceof FlowPauseException) {
-                        // 场景 1: 流程暂停 (如: 屏幕交互)
-                        handleTaskPause(finishedNodeId, (FlowPauseException) cause, context);
-                    }
-                    else if (cause instanceof FlowSkipException) {
-                        // 场景 2: 动态跳过 (如: 无数据)
-                        handleTaskSkip(finishedNodeId, (FlowSkipException) cause, context);
-                    }
-                    else if (cause instanceof FlowFailException) {
-                        // 场景 3: 快速失败 (忽略重试)
-                        handleTaskFailure(execResult, context, false);
-                    }
-                    else {
-                        // 场景 4: 普通异常 (走默认重试机制)
-                        handleTaskFailure(execResult, context, true);
-                    }
-
+                    dispatchFailure(finishedNodeId, execResult, context);
                 }
                 catch (CancellationException e) {
                     handleCancellation(finishedNodeId, context);
@@ -267,12 +293,8 @@ public class FlowExecutorPro implements AutoCloseable {
      * 处理任务正常完成（包括业务上的成功或失败）
      */
     private void handleTaskCompletion(String nodeId, NodeExecutionResult result, ExecutionContext context) {
-        TaskNode node = this.runNodes.get(nodeId);
-        // 更新状态
-        TaskState finalState = result.isSuccess() ? TaskState.SUCCESS : TaskState.FAILED;
-        node.setTaskState(finalState);
-
         if (result.isSuccess()) {
+            this.runNodes.get(nodeId).setTaskState(TaskState.SUCCESS);
             this.completedNodes.add(nodeId);
             this.completedTasksNum.incrementAndGet();
             // 在上下文中记录节点输出
@@ -282,8 +304,32 @@ public class FlowExecutorPro implements AutoCloseable {
             // 成功后，评估下游节点
             evaluateAndTriggerDownstream(nodeId, context, result.getNextNodesToActivate());
         } else {
-            // 失败处理 (内部包含重试逻辑)
-            handleTaskFailure(result, context, true);
+            // 失败 / 控制流异常，统一分发（各处理器负责设置节点最终状态）
+            dispatchFailure(nodeId, result, context);
+        }
+    }
+
+    /**
+     * 统一分发失败结果：识别节点抛出的控制流异常并路由到对应处理器。
+     * <p>
+     * 由于 {@link #submitTask} 中的 Callable 会捕获所有异常并包装成 failed 结果，
+     * 控制流异常（暂停/跳过/快速失败）保存在 {@link NodeExecutionResult#getError()} 中，
+     * 必须在此显式拆包，否则会被当作普通失败进入重试逻辑。
+     */
+    private void dispatchFailure(String nodeId, NodeExecutionResult failedResult, ExecutionContext context) {
+        Throwable cause = failedResult.getError();
+        if (cause instanceof FlowPauseException) {
+            // 场景 1: 流程暂停 (如: 屏幕交互)
+            handleTaskPause(nodeId, (FlowPauseException) cause, context);
+        } else if (cause instanceof FlowSkipException) {
+            // 场景 2: 动态跳过 (如: 无数据)
+            handleTaskSkip(nodeId, (FlowSkipException) cause, context);
+        } else if (cause instanceof FlowFailException) {
+            // 场景 3: 快速失败 (忽略重试)
+            handleTaskFailure(failedResult, context, false);
+        } else {
+            // 场景 4: 普通异常 / 业务软失败 (走默认重试机制)
+            handleTaskFailure(failedResult, context, true);
         }
     }
 
@@ -389,138 +435,193 @@ public class FlowExecutorPro implements AutoCloseable {
     }
 
     /**
-     * 核心逻辑：评估下游节点是否可以触发
-     * 替代了原有的 "入度减1即触发" 逻辑
+     * 下游级联评估任务的待处理项: 表示"某节点已终结, 需要评估其下游"。
+     * 用于将原本的递归传播改为显式工作队列迭代。
+     */
+    private record DownstreamEval(String nodeId, Collection<String> activatedBranch) {}
+
+    /**
+     * 核心逻辑：评估下游节点是否可以触发。
+     * <p>
+     * 采用显式工作队列迭代处理级联跳过/失败传播，避免长链递归导致栈溢出。
      *
      * @param finishedNodeId 刚刚结束的节点ID
      * @param context 上下文
      * @param activatedBranch (可选) 如果上游是分支节点，这里指定了允许激活的下游分支集合
      */
     private void evaluateAndTriggerDownstream(String finishedNodeId, ExecutionContext context, Collection<String> activatedBranch) {
-        Collection<String> downstreamNodes = this.dagGraph.getDownstreamNodes(finishedNodeId);
-        if (downstreamNodes == null || downstreamNodes.isEmpty()) {
-            return;
-        }
+        // 使用显式工作队列替代递归调用, 避免长跳过链(如整条分支被级联跳过)导致 StackOverflow。
+        Deque<DownstreamEval> pending = new ArrayDeque<>();
+        pending.push(new DownstreamEval(finishedNodeId, activatedBranch));
 
-        for (String dependentId : downstreamNodes) {
-            TaskNode dependentNode = this.runNodes.get(dependentId);
-
-            // 1. 快速检查：如果节点已经运行或完成，跳过
-            // 使用 double-check 或是依赖 synchronized 保证状态一致性
-            // 这里为了性能，先读 volatile state
-            if (dependentNode.getTaskState() != TaskState.PENDING) {
+        while (!pending.isEmpty()) {
+            DownstreamEval eval = pending.pop();
+            Collection<String> downstreamNodes = this.dagGraph.getDownstreamNodes(eval.nodeId());
+            if (downstreamNodes == null || downstreamNodes.isEmpty()) {
                 continue;
             }
 
-            // 2. 分支逻辑检查
-            // 如果上游指定了分支，且当前节点不在分支中，则当前节点被“逻辑排除”
-            // 注意：Airflow中未被选择的分支会置为 SKIPPED。
-            // 只有当 finishedNode 是成功状态且显式指定了 nextNodes 时才应用分支逻辑
-            final boolean isBranchSkipped = (activatedBranch != null && !activatedBranch.isEmpty() && !activatedBranch.contains(dependentId));
+            for (String dependentId : downstreamNodes) {
+                TaskNode dependentNode = this.runNodes.get(dependentId);
 
-            // 3. 更新入度 (表示有多少上游已经表态)
-            final int remainingDependencies = this.currentInDegree.get(dependentId).decrementAndGet();
-
-            if (isBranchSkipped) {
-                // 如果被分支排除，直接视为 SKIPPED 并不再评估规则
-                markNodeAsSkipped(dependentId, "Not selected by branch node " + finishedNodeId, context);
-                continue;
-            }
-
-            // 4. 获取所有上游状态
-            Collection<String> upstreamNodeIds = this.dagGraph.getUpstreamNodes(dependentId);
-            List<TaskState> upstreamStates = new ArrayList<>(upstreamNodeIds.size());
-            for (String unid : upstreamNodeIds) {
-                upstreamStates.add(this.runNodes.get(unid).getTaskState());
-            }
-
-            // 5. 评估触发规则
-            TaskTriggerRule rule = dependentNode.getTriggerRule();
-            if (rule == null) {
-                rule = TaskTriggerRule.ALL_SUCCESS;
-            }
-            final boolean shouldRun = rule.evaluate(upstreamStates);
-            if (shouldRun) {
-                // 满足规则，加入就绪队列
-                // 注意：这里需要防止并发重复添加。submitReadyTasks 会再次检查 PENDING
-                // 但为了保险，可以加锁或使用 CAS。此处简化依赖 submitTask 的状态检查。
-                if (!this.readyQueue.contains(dependentId)) {
-                    this.readyQueue.offer(dependentId);
+                // 1. 快速检查：如果节点已经运行或完成，跳过
+                // 读取当前状态（volatile 读取保证可见性）
+                TaskState currentState = dependentNode.getTaskState();
+                if (currentState != TaskState.PENDING) {
+                    continue;
                 }
-            } else {
-                // 6. 如果规则不满足，且所有上游都已完结，则必须给出一个最终状态 (SKIPPED 或 UPSTREAM_FAILED)
-                if (remainingDependencies <= 0) {
-                    handleRuleMismatch(dependentId, rule, context);
+
+                // 2. 分支逻辑检查
+                // 如果上游指定了分支，且当前节点不在分支中，则当前节点被“逻辑排除”。
+                // 注意：Airflow 中未被选择的分支会置为 SKIPPED，但此处不立即终结/传播，
+                // 需等待该节点的“所有上游都已表态”(入度归零)后再决定，避免菱形依赖下过早传播。
+                final boolean isBranchSkipped = (eval.activatedBranch() != null
+                        && !eval.activatedBranch().isEmpty()
+                        && !eval.activatedBranch().contains(dependentId));
+
+                // 3. 更新入度 (表示有多少上游已经表态)
+                final int remainingDependencies = this.currentInDegree.get(dependentId).decrementAndGet();
+
+                if (isBranchSkipped) {
+                    // 记录被分支排除(粘性)：即使后续触发规则满足也不会运行
+                    this.branchExcludedNodes.putIfAbsent(dependentId, "Not selected by branch node " + eval.nodeId());
+                }
+
+                // 被分支排除的节点不可运行；其余按触发规则评估
+                final boolean excluded = this.branchExcludedNodes.containsKey(dependentId);
+
+                // 4. 获取所有上游状态
+                Collection<String> upstreamNodeIds = this.dagGraph.getUpstreamNodes(dependentId);
+                List<TaskState> upstreamStates = new ArrayList<>(upstreamNodeIds.size());
+                for (String unid : upstreamNodeIds) {
+                    upstreamStates.add(this.runNodes.get(unid).getTaskState());
+                }
+
+                // 5. 评估触发规则
+                TaskTriggerRule rule = dependentNode.getTriggerRule();
+                if (rule == null) {
+                    rule = TaskTriggerRule.ALL_SUCCESS;
+                }
+                final boolean shouldRun = !excluded && rule.evaluate(upstreamStates);
+                if (shouldRun) {
+                    // 满足规则，加入就绪队列
+                    // 注意：这里需要防止并发重复添加。submitReadyTasks 会再次检查 PENDING
+                    // 但为了保险，可以加锁或使用 CAS。此处简化依赖 submitTask 的状态检查。
+                    if (!this.readyQueue.contains(dependentId)) {
+                        this.readyQueue.offer(dependentId);
+                    }
+                } else if (remainingDependencies <= 0) {
+                    // 6. 所有上游均已表态但仍不可运行 → 给出最终状态并传播(级联入队，非递归)
+                    if (excluded) {
+                        if (markNodeAsSkipped(dependentId, this.branchExcludedNodes.get(dependentId), context)) {
+                            pending.push(new DownstreamEval(dependentId, null));
+                        }
+                    } else if (handleRuleMismatch(dependentId, rule, context)) {
+                        pending.push(new DownstreamEval(dependentId, null));
+                    }
                 }
             }
         }
 
-        // 尝试提交新产生的就绪任务
+        // 所有级联评估完成后，统一提交新产生的就绪任务
         submitReadyTasks(context);
     }
 
     /**
      * 当所有上游都已结束，但触发规则仍不满足时的处理逻辑
+     *
+     * @return true 表示本次将节点由 PENDING 终结为最终态(需要继续评估其下游)；false 表示节点已被终结，无需重复处理
      */
-    private void handleRuleMismatch(String nodeId, TaskTriggerRule rule, ExecutionContext context) {
+    private boolean handleRuleMismatch(String nodeId, TaskTriggerRule rule, ExecutionContext context) {
         TaskNode node = this.runNodes.get(nodeId);
-        synchronized (node) {
-            if (node.getTaskState() != TaskState.PENDING) {
-                return;
-            }
+        
+        String reason;
+        TaskState finalState;
 
-            String reason;
-            TaskState finalState;
-
-            // 简单的映射逻辑，可根据需要扩展
-            if (rule == TaskTriggerRule.ALL_SUCCESS) {
-                finalState = TaskState.UPSTREAM_FAILED;
-                reason = "Upstream failed or skipped.";
-            } else if (rule == TaskTriggerRule.ALL_FAILED) {
-                finalState = TaskState.SKIPPED;
-                reason = "Some upstreams succeeded.";
-            } else {
-                finalState = TaskState.UPSTREAM_FAILED;
-                reason = "Trigger rule " + rule + " not satisfied after all upstreams finished.";
-            }
-
-            node.setTaskState(finalState);
-
-            NodeExecutionResult result = NodeExecutionResult.failed(reason)
-                    .setNodeId(nodeId)
-                    .setSkipped(finalState == TaskState.SKIPPED); // UPSTREAM_FAILED 也可以视作 Skipped 的一种变体，视业务定义
-
-            this.completedTasksNum.incrementAndGet();
-            this.completedNodes.add(nodeId);
-
-            context.addNodeExecutionResult(nodeId, result);
-            notifyNodeCompletion(result);
-
-            // 递归：这个节点现在的状态变了，需要通知它的下游
-            evaluateAndTriggerDownstream(nodeId, context, null);
+        // 简单的映射逻辑，可根据需要扩展
+        if (rule == TaskTriggerRule.ALL_SUCCESS) {
+            finalState = TaskState.UPSTREAM_FAILED;
+            reason = "Upstream failed or skipped.";
+        } else if (rule == TaskTriggerRule.ALL_FAILED) {
+            finalState = TaskState.SKIPPED;
+            reason = "Some upstreams succeeded.";
+        } else {
+            finalState = TaskState.UPSTREAM_FAILED;
+            reason = "Trigger rule " + rule + " not satisfied after all upstreams finished.";
         }
+
+        // 使用 CAS 确保只有一个线程能将状态从 PENDING 转换到最终态
+        boolean stateChanged = false;
+        if (node instanceof AbstractNode) {
+            AbstractNode abstractNode = (AbstractNode) node;
+            stateChanged = abstractNode.compareAndSetTaskState(TaskState.PENDING, finalState);
+        } else {
+            // 降级：使用同步块
+            synchronized (node) {
+                if (node.getTaskState() == TaskState.PENDING) {
+                    node.setTaskState(finalState);
+                    stateChanged = true;
+                }
+            }
+        }
+
+        if (!stateChanged) {
+            return false;
+        }
+
+        NodeExecutionResult result = NodeExecutionResult.failed(reason)
+                .setNodeId(nodeId)
+                .setSkipped(finalState == TaskState.SKIPPED); // UPSTREAM_FAILED 也可以视作 Skipped 的一种变体，视业务定义
+
+        this.completedTasksNum.incrementAndGet();
+        this.completedNodes.add(nodeId);
+
+        context.addNodeExecutionResult(nodeId, result);
+        notifyNodeCompletion(result);
+
+        // 级联由调用方通过工作队列处理，不再递归
+        return true;
     }
 
-    private void markNodeAsSkipped(String nodeId, String reason, ExecutionContext context) {
+    /**
+     * 将节点标记为跳过。
+     *
+     * @return true 表示本次将节点由 PENDING 终结为 SKIPPED(需要继续评估其下游)；false 表示节点已被终结，无需重复处理
+     */
+    private boolean markNodeAsSkipped(String nodeId, String reason, ExecutionContext context) {
         TaskNode node = this.runNodes.get(nodeId);
-        synchronized (node) {
-            if (node.getTaskState() != TaskState.PENDING) {
-                return;
+        
+        // 使用 CAS 确保只有一个线程能将状态从 PENDING 转换到 SKIPPED
+        boolean stateChanged = false;
+        if (node instanceof AbstractNode) {
+            AbstractNode abstractNode = (AbstractNode) node;
+            stateChanged = abstractNode.compareAndSetTaskState(TaskState.PENDING, TaskState.SKIPPED);
+        } else {
+            // 降级：使用同步块
+            synchronized (node) {
+                if (node.getTaskState() == TaskState.PENDING) {
+                    node.setTaskState(TaskState.SKIPPED);
+                    stateChanged = true;
+                }
             }
-
-            node.setTaskState(TaskState.SKIPPED);
-            NodeExecutionResult result = NodeExecutionResult.failed(reason)
-                    .setNodeId(nodeId)
-                    .setSkipped(true);
-
-            this.completedNodes.add(nodeId);
-            this.completedTasksNum.incrementAndGet();
-
-            context.addNodeExecutionResult(nodeId, result);
-            notifyNodeCompletion(result);
-
-            evaluateAndTriggerDownstream(nodeId, context, null);
         }
+
+        if (!stateChanged) {
+            return false;
+        }
+
+        NodeExecutionResult result = NodeExecutionResult.failed(reason)
+                .setNodeId(nodeId)
+                .setSkipped(true);
+
+        this.completedNodes.add(nodeId);
+        this.completedTasksNum.incrementAndGet();
+
+        context.addNodeExecutionResult(nodeId, result);
+        notifyNodeCompletion(result);
+
+        // 级联由调用方通过工作队列处理，不再递归
+        return true;
     }
 
     private void submitReadyTasks(ExecutionContext context) {
@@ -535,13 +636,22 @@ public class FlowExecutorPro implements AutoCloseable {
     private void submitTask(final String nodeId, final ExecutionContext context) {
         final TaskNode runNode = this.runNodes.get(nodeId);
 
-        // 关键：CAS 或 同步块防止重复提交
+        // 使用 CAS 防止重复提交
         // Eager Execution (如 ONE_SUCCESS) 可能导致多次触发 submitTask
-        synchronized (runNode) {
-            if (runNode.getTaskState() != TaskState.PENDING) {
+        if (runNode instanceof AbstractNode) {
+            AbstractNode abstractNode = (AbstractNode) runNode;
+            if (!abstractNode.compareAndSetTaskState(TaskState.PENDING, TaskState.RUNNING)) {
+                // 状态已不是 PENDING，说明已被其他线程提交或已完成
                 return;
             }
-            runNode.setTaskState(TaskState.RUNNING);
+        } else {
+            // 降级处理：对于非 AbstractNode 的节点，使用同步块
+            synchronized (runNode) {
+                if (runNode.getTaskState() != TaskState.PENDING) {
+                    return;
+                }
+                runNode.setTaskState(TaskState.RUNNING);
+            }
         }
 
         Future<NodeExecutionResult> future = this.executorService.submit(() -> {
@@ -638,7 +748,8 @@ public class FlowExecutorPro implements AutoCloseable {
         try {
             this.executionListener.onNodeCompleted(result);
         } catch (Exception e) {
-            LOG.error("Listener error", e);
+            LOG.error(">> ERROR: Node completion listener threw exception for node <{}>", result.getNodeId(), e);
+            // 注意：监听器异常不应中断流程执行
         }
     }
 
@@ -646,14 +757,16 @@ public class FlowExecutorPro implements AutoCloseable {
         try {
             this.executionListener.onFlowCompleted(result);
         } catch (Exception e) {
-            LOG.error("Listener error", e);
+            LOG.error(">> ERROR: Flow completion listener threw exception", e);
+            // 注意：即使监听器失败，流程执行结果也已确定
         }
     }
 
     @Override
     public void close() throws Exception {
         cancel();
-        shutdown(this.threadPoolExecutor);
+        // 只关闭自己创建的 executor，不关闭外部传入的
+        shutdown(this.managedExecutor);
         shutdown(this.retryExecutorService);
     }
 

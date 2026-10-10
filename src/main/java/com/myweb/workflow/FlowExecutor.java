@@ -16,7 +16,9 @@ import com.myweb.workflow.nodes.StartNode;
 
 /**
  * DAG流程执行器
+ * @deprecated
  */
+@Deprecated
 public class FlowExecutor implements AutoCloseable {
     private static final Logger LOG = LoggerFactory.getLogger(FlowExecutor.class);
 
