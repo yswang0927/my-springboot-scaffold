@@ -127,7 +127,16 @@ public class FlowExecutorPro implements AutoCloseable {
         this.executorService = new ExecutorCompletionService<>(this.actualExecutor);
         this.retryExecutorService = Executors.newSingleThreadScheduledExecutor();
 
-        this.initializeNodes();
+        try {
+            this.initializeNodes();
+        } catch (Exception e) {
+            try {
+                this.close();
+            } catch (Exception ignored) {
+                // ignored
+            }
+            throw new FlowExecuteException("Failed to initialize executor", e);
+        }
     }
 
     private void initializeNodes() {
@@ -764,7 +773,9 @@ public class FlowExecutorPro implements AutoCloseable {
 
     @Override
     public void close() throws Exception {
-        cancel();
+        try {
+            cancel();
+        } catch (Exception ignored) {}
         // 只关闭自己创建的 executor，不关闭外部传入的
         shutdown(this.managedExecutor);
         shutdown(this.retryExecutorService);
@@ -774,6 +785,7 @@ public class FlowExecutorPro implements AutoCloseable {
         if (es == null) {
             return;
         }
+
         try {
             es.shutdown();
             if (!es.awaitTermination(SHUTDOWN_AWAIT_SECONDS, TimeUnit.SECONDS)) {
@@ -782,7 +794,7 @@ public class FlowExecutorPro implements AutoCloseable {
         } catch (InterruptedException e) {
             es.shutdownNow();
             Thread.currentThread().interrupt();
-        }
+        } catch (Exception ignored) {}
     }
 
     // Default Listener Implementation
