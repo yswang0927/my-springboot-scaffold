@@ -20,17 +20,7 @@ import com.myweb.workflow.nodes.AbstractNode;
 import com.myweb.workflow.nodes.StartNode;
 
 /**
- * DAG 流程执行器（生产就绪版）。
- * <p>
- * 关键修复相对初版：
- * <ul>
- *   <li>重试前将节点状态恢复为 PENDING，否则 CAS 会拒绝二次提交。</li>
- *   <li>从 GNode.data 解析的 TriggerRule / maxRetries 经 AbstractNode 生效。</li>
- *   <li>就绪队列用 Set 去重，避免 ConcurrentLinkedQueue.contains 竞态与 O(n) 扫描。</li>
- *   <li>支持 Pause 后 resume：暂停节点记为已完成并激活下游，主循环可继续。</li>
- *   <li>整图超时 + 独立看门狗（TIMED_OUT）；cancel 语义统一；重试/看门狗线程 daemon 化。</li>
- *   <li>规则不满足时的终态映射更贴近各 TriggerRule 语义。</li>
- * </ul>
+ * DAG 流程执行器。
  */
 public class FlowExecutorPro implements AutoCloseable {
     private static final Logger LOG = LoggerFactory.getLogger(FlowExecutorPro.class);
@@ -50,6 +40,8 @@ public class FlowExecutorPro implements AutoCloseable {
     /** 就绪队列：FIFO；配合 readySet 做原子去重 */
     private final ConcurrentLinkedQueue<String> readyQueue = new ConcurrentLinkedQueue<>();
     private final Set<String> readySet = ConcurrentHashMap.newKeySet();
+
+    // 重试计数
     private final ConcurrentMap<String, AtomicInteger> retryCounts = new ConcurrentHashMap<>();
 
     private final ConcurrentMap<String, Future<NodeExecutionResult>> runningFutures = new ConcurrentHashMap<>();
@@ -107,8 +99,7 @@ public class FlowExecutorPro implements AutoCloseable {
     /**
      * @param flowTimeoutMillis 整图超时毫秒，&lt;=0 不限制
      */
-    public FlowExecutorPro(Graph flowGraph, ExecutionListener listener, ExecutorService executor,
-                           long flowTimeoutMillis) {
+    public FlowExecutorPro(Graph flowGraph, ExecutionListener listener, ExecutorService executor, long flowTimeoutMillis) {
         if (flowGraph == null) {
             throw new FlowExecuteException("`Graph` must not be null");
         }
@@ -182,8 +173,7 @@ public class FlowExecutorPro implements AutoCloseable {
             this.runNodes.put(node.getId(), TaskNodeFactory.createNode(node));
             this.retryCounts.put(node.getId(), new AtomicInteger(0));
         }
-        this.dagGraph.getNodesInDegree().forEach((nodeId, degree) ->
-                this.currentInDegree.put(nodeId, new AtomicInteger(degree)));
+        this.dagGraph.getNodesInDegree().forEach((nodeId, degree) -> this.currentInDegree.put(nodeId, new AtomicInteger(degree)));
     }
 
     private void resetExecutionState() {
@@ -252,26 +242,32 @@ public class FlowExecutorPro implements AutoCloseable {
             if (node.getTaskState() != TaskState.PENDING) {
                 continue;
             }
+
             if (this.branchExcludedNodes.containsKey(id)) {
                 continue;
             }
+
             if (this.completedNodes.contains(id)) {
                 continue;
             }
+
             Collection<String> upstreamNodeIds = this.dagGraph.getUpstreamNodes(id);
             List<TaskState> upstreamStates = new ArrayList<>(upstreamNodeIds.size());
             for (String unid : upstreamNodeIds) {
                 TaskNode up = this.runNodes.get(unid);
                 upstreamStates.add(up != null ? up.getTaskState() : TaskState.PENDING);
             }
+
             TaskTriggerRule rule = node.getTriggerRule();
             if (rule == null) {
                 rule = TaskTriggerRule.ALL_SUCCESS;
             }
+
             if (rule == TaskTriggerRule.ALWAYS || rule.evaluate(upstreamStates)) {
                 offerReady(id);
             }
         }
+
         submitReadyTasks(context);
     }
 
@@ -337,11 +333,13 @@ public class FlowExecutorPro implements AutoCloseable {
             if (this.executionState != ExecutionState.PAUSED) {
                 throw new FlowExecuteException("Executor is not paused, current state: " + this.executionState);
             }
+
             nodeId = this.pausedNodeId;
             ctx = context != null ? context : this.pausedContext;
             if (ctx == null) {
                 throw new FlowExecuteException("No execution context available for resume");
             }
+
             this.executionState = ExecutionState.RUNNING;
             this.pausedNodeId = null;
             this.pausedContext = null;
@@ -359,6 +357,7 @@ public class FlowExecutorPro implements AutoCloseable {
                     this.completedNodes.add(nodeId);
                     this.completedTasksNum.incrementAndGet();
                 }
+
                 NodeExecutionResult successResult = NodeExecutionResult.success()
                         .setNodeId(nodeId)
                         .setEndTime(Instant.now());
@@ -399,14 +398,15 @@ public class FlowExecutorPro implements AutoCloseable {
                 break;
             }
             // 超时 / 取消 / 失败终态：收割已取消的 Future 后退出
-            if (state == ExecutionState.TIMED_OUT || state == ExecutionState.CANCELLED
-                    || state == ExecutionState.FAILED) {
+            if (state == ExecutionState.TIMED_OUT || state == ExecutionState.CANCELLED || state == ExecutionState.FAILED) {
                 drainRunningFutures(context, /*submitNew*/ false);
                 break;
             }
+
             if (state != ExecutionState.RUNNING) {
                 break;
             }
+
             if (this.completedTasksNum.get() >= this.runNodes.size()) {
                 break;
             }
@@ -428,14 +428,14 @@ public class FlowExecutorPro implements AutoCloseable {
                 cancelAllRunningTasks(ExecutionState.FAILED);
                 break;
             }
+
             if (completedFuture == null) {
                 if (!this.readyQueue.isEmpty()) {
                     submitReadyTasks(context);
                     continue;
                 }
-                if (this.runningFutures.isEmpty()
-                        && this.readyQueue.isEmpty()
-                        && this.scheduledRetryTasksNum.get() == 0) {
+
+                if (this.runningFutures.isEmpty() && this.readyQueue.isEmpty() && this.scheduledRetryTasksNum.get() == 0) {
                     if (this.completedTasksNum.get() < this.runNodes.size()) {
                         LOG.warn(">> WARNING: Execution loop exited early. Completed: {}, Total: {}, Missing: {}",
                                 this.completedTasksNum.get(),
@@ -462,8 +462,7 @@ public class FlowExecutorPro implements AutoCloseable {
      */
     private void drainRunningFutures(ExecutionContext context, boolean submitNew) throws InterruptedException {
         while (!this.runningFutures.isEmpty() || this.scheduledRetryTasksNum.get() > 0) {
-            Future<NodeExecutionResult> completedFuture =
-                    this.executorService.poll(TASK_POLL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            Future<NodeExecutionResult> completedFuture = this.executorService.poll(TASK_POLL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             if (completedFuture == null) {
                 // 重试仍在排队时继续等
                 if (this.runningFutures.isEmpty() && this.scheduledRetryTasksNum.get() == 0) {
@@ -471,7 +470,9 @@ public class FlowExecutorPro implements AutoCloseable {
                 }
                 continue;
             }
+
             processCompletedFuture(completedFuture, context);
+
             if (submitNew && this.executionState == ExecutionState.RUNNING) {
                 submitReadyTasks(context);
             }
@@ -575,6 +576,7 @@ public class FlowExecutorPro implements AutoCloseable {
         if (failedNodeId == null) {
             return;
         }
+
         // 同一节点最终失败只记录一次（equals 按 nodeId）
         TaskNode failedNode = this.runNodes.get(failedNodeId);
         if (failedNode == null) {
@@ -586,12 +588,9 @@ public class FlowExecutorPro implements AutoCloseable {
             int attempt = this.retryCounts.get(failedNodeId).incrementAndGet();
             if (attempt <= maxRetries) {
                 LOG.warn(">> WARNING: Retry task <{}> attempt {}/{}", failedNodeId, attempt, maxRetries);
-                // ★ 恢复 PENDING，否则二次 submit 会被 CAS 拒绝
                 failedNode.setTaskState(TaskState.PENDING);
                 this.scheduledRetryTasksNum.incrementAndGet();
                 final long delay = Math.max(0L, failedNode.getRetryDelayMillis());
-                // 仅 offerReady 单通道：调度线程不写 runningFutures，避免与主循环竞态泄漏；
-                // 配合 nextPollTimeoutMillis() 在有重试在途时用 50ms 短 poll，时延不会被抬到 2s。
                 this.retryExecutorService.schedule(() -> {
                     try {
                         if (this.executionState == ExecutionState.RUNNING) {
@@ -670,8 +669,7 @@ public class FlowExecutorPro implements AutoCloseable {
     }
 
     private void handleCancellation(String nodeId, ExecutionContext context) {
-        final boolean dueToTimeout = this.flowTimedOut.get()
-                || this.executionState == ExecutionState.TIMED_OUT;
+        final boolean dueToTimeout = this.flowTimedOut.get() || this.executionState == ExecutionState.TIMED_OUT;
         LOG.warn(">> Task <{}> Cancelled{}.", nodeId, dueToTimeout ? " (flow timeout)" : "");
         String reason = dueToTimeout ? "cancelled by flow timeout" : "Task Cancelled";
         NodeExecutionResult res = NodeExecutionResult.failed(reason).setNodeId(nodeId);
@@ -683,6 +681,7 @@ public class FlowExecutorPro implements AutoCloseable {
         if (this.completedNodes.add(nodeId)) {
             this.completedTasksNum.incrementAndGet();
         }
+
         this.failedTasks.add(res);
 
         context.addNodeExecutionResult(nodeId, res);
@@ -702,6 +701,7 @@ public class FlowExecutorPro implements AutoCloseable {
                 || this.flowTimedOut.get()) {
             return;
         }
+
         Deque<DownstreamEval> pending = new ArrayDeque<>();
         pending.push(new DownstreamEval(finishedNodeId, activatedBranch));
 
@@ -730,8 +730,7 @@ public class FlowExecutorPro implements AutoCloseable {
                 final int remainingDependencies = this.currentInDegree.get(dependentId).decrementAndGet();
 
                 if (isBranchSkipped) {
-                    this.branchExcludedNodes.putIfAbsent(dependentId,
-                            "Not selected by branch node " + eval.nodeId());
+                    this.branchExcludedNodes.putIfAbsent(dependentId, "Not selected by branch node " + eval.nodeId());
                 }
 
                 final boolean excluded = this.branchExcludedNodes.containsKey(dependentId);
@@ -747,6 +746,7 @@ public class FlowExecutorPro implements AutoCloseable {
                 if (rule == null) {
                     rule = TaskTriggerRule.ALL_SUCCESS;
                 }
+
                 final boolean shouldRun = !excluded && rule.evaluate(upstreamStates);
                 if (shouldRun) {
                     offerReady(dependentId);
@@ -775,11 +775,9 @@ public class FlowExecutorPro implements AutoCloseable {
         String reason;
         TaskState finalState;
 
-        boolean anyFailed = upstreamStates.stream()
-                .anyMatch(s -> s == TaskState.FAILED || s == TaskState.UPSTREAM_FAILED);
+        boolean anyFailed = upstreamStates.stream().anyMatch(s -> s == TaskState.FAILED || s == TaskState.UPSTREAM_FAILED);
         boolean anySkipped = upstreamStates.stream().anyMatch(s -> s == TaskState.SKIPPED);
-        boolean allSkipped = !upstreamStates.isEmpty()
-                && upstreamStates.stream().allMatch(s -> s == TaskState.SKIPPED);
+        boolean allSkipped = !upstreamStates.isEmpty() && upstreamStates.stream().allMatch(s -> s == TaskState.SKIPPED);
         boolean anySuccess = upstreamStates.stream().anyMatch(s -> s == TaskState.SUCCESS);
 
         switch (rule) {
@@ -809,8 +807,7 @@ public class FlowExecutorPro implements AutoCloseable {
                 break;
             case NONE_FAILED:
             case NONE_FAILED_MIN_ONE_SUCCESS:
-                finalState = anyFailed ? TaskState.UPSTREAM_FAILED
-                        : (allSkipped || !anySuccess ? TaskState.SKIPPED : TaskState.UPSTREAM_FAILED);
+                finalState = anyFailed ? TaskState.UPSTREAM_FAILED : (allSkipped || !anySuccess ? TaskState.SKIPPED : TaskState.UPSTREAM_FAILED);
                 reason = anyFailed ? "Upstream failed." : "Trigger rule not satisfied.";
                 break;
             case NONE_SKIPPED:
@@ -972,6 +969,7 @@ public class FlowExecutorPro implements AutoCloseable {
             this.flowDeadline = null;
             return;
         }
+
         this.flowDeadline = Instant.now().plusMillis(this.flowTimeoutMillis);
         final long timeout = this.flowTimeoutMillis;
         this.watchdogFuture = this.watchdogExecutor.schedule(() -> {
@@ -1004,6 +1002,7 @@ public class FlowExecutorPro implements AutoCloseable {
         if (!this.flowTimedOut.compareAndSet(false, true)) {
             return; // 已处理
         }
+
         final String msg = String.format("Flow timed out after %d ms (%s)", this.flowTimeoutMillis, source);
         LOG.error(">> ERROR: {}", msg);
 
@@ -1069,19 +1068,18 @@ public class FlowExecutorPro implements AutoCloseable {
                 this.executionState = ExecutionState.TIMED_OUT;
                 result.setSuccess(false);
                 result.setTimedOut(true);
-                result.setTimeoutMessage(String.format(
-                        "Flow timed out after %d ms", this.flowTimeoutMillis));
+                result.setTimeoutMessage(String.format("Flow timed out after %d ms", this.flowTimeoutMillis));
                 // 将仍未完成的节点记入失败原因，便于排查
                 for (String id : this.runNodes.keySet()) {
                     if (!this.completedNodes.contains(id)) {
                         result.addFailedNode(id, "cancelled by flow timeout");
                         TaskNode n = this.runNodes.get(id);
-                        if (n != null && (n.getTaskState() == TaskState.RUNNING
-                                || n.getTaskState() == TaskState.PENDING)) {
+                        if (n != null && (n.getTaskState() == TaskState.RUNNING || n.getTaskState() == TaskState.PENDING)) {
                             n.setTaskState(TaskState.CANCELLED);
                         }
                     }
                 }
+
             } else if (this.executionState == ExecutionState.RUNNING) {
                 if (this.completedTasksNum.get() >= this.runNodes.size()) {
                     this.executionState = ExecutionState.COMPLETED;
@@ -1090,6 +1088,7 @@ public class FlowExecutorPro implements AutoCloseable {
                     this.executionState = ExecutionState.FAILED;
                     result.setSuccess(false);
                 }
+
             } else if (this.executionState == ExecutionState.PAUSED) {
                 result.setSuccess(false);
             } else if (this.executionState == ExecutionState.CANCELLED) {
@@ -1126,8 +1125,8 @@ public class FlowExecutorPro implements AutoCloseable {
     public void close() throws Exception {
         try {
             cancel();
-        } catch (Exception ignored) {
-        }
+        } catch (Exception ignored) {}
+
         cancelWatchdog();
         shutdown(this.managedExecutor);
         shutdown(this.retryExecutorService);
@@ -1138,6 +1137,7 @@ public class FlowExecutorPro implements AutoCloseable {
         if (es == null) {
             return;
         }
+
         try {
             es.shutdown();
             if (!es.awaitTermination(SHUTDOWN_AWAIT_SECONDS, TimeUnit.SECONDS)) {
@@ -1146,8 +1146,7 @@ public class FlowExecutorPro implements AutoCloseable {
         } catch (InterruptedException e) {
             es.shutdownNow();
             Thread.currentThread().interrupt();
-        } catch (Exception ignored) {
-        }
+        } catch (Exception ignored) {}
     }
 
     private static class DefaultExecutionListener implements ExecutionListener {
