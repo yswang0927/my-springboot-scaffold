@@ -1,11 +1,14 @@
 package com.myweb.workflow;
 
+import com.myweb.workflow.graph.GEdge;
+import com.myweb.workflow.graph.GNode;
 import com.myweb.workflow.graph.Graph;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -146,6 +149,37 @@ class FlowExecutorProTest {
         }
     }
 
+    @Test
+    @Timeout(value = 15, unit = TimeUnit.SECONDS)
+    void flowReport_succeedNodesOnlyRealSuccesses() throws Exception {
+        Graph g = TestSupport.graph(
+                List.of(
+                        TestSupport.node("s", "start"),
+                        TestSupport.node("f", TestSupport.TYPE_FAIL, TestSupport.data(
+                                "failTimes", 1,
+                                "maxRetries", 0
+                        )),
+                        TestSupport.node("d", TestSupport.TYPE_PASS)
+                ),
+                List.of(
+                        TestSupport.edge("1", "s", "f"),
+                        TestSupport.edge("2", "f", "d")
+                )
+        );
+        TestSupport.CollectingListener listener = new TestSupport.CollectingListener();
+        try (FlowExecutorPro ex = new FlowExecutorPro(g, listener)) {
+            ex.execute(ctx("x"));
+            FlowExecutionResult r = listener.flowResults.get(listener.flowResults.size() - 1);
+            assertNotNull(r);
+            assertFalse(r.isSuccess());
+            // 只有 s 真正 SUCCESS；f 失败、d 因上游失败 UPSTREAM_FAILED，都不应计入 succeedNodes
+            assertTrue(r.getSucceedNodes().contains("s"));
+            assertFalse(r.getSucceedNodes().contains("f"));
+            assertFalse(r.getSucceedNodes().contains("d"));
+            assertTrue(r.getFailedNodes().containsKey("f"));
+        }
+    }
+
     // -------------------- 分支 --------------------
 
     @Test
@@ -180,6 +214,44 @@ class FlowExecutorProTest {
             assertTrue(c.getNodeExecutionResult("right").isPresent());
             assertTrue(c.getNodeExecutionResult("right").get().isSkipped()
                     || !c.getNodeExecutionResult("right").get().isSuccess());
+        }
+    }
+
+    @Test
+    @Timeout(value = 15, unit = TimeUnit.SECONDS)
+    void branchNoMatch_skipsAllDirectDownstream_noPassthrough() throws Exception {
+        // 分支未命中任何路径且无 else：全部直接下游必须被排除，禁止穿透执行
+        Graph g = TestSupport.graph(
+                List.of(
+                        TestSupport.node("s", "start"),
+                        TestSupport.node("br", TestSupport.TYPE_BRANCH, TestSupport.data(
+                                "activate", List.of()
+                        )),
+                        TestSupport.node("left", TestSupport.TYPE_COUNT),
+                        TestSupport.node("right", TestSupport.TYPE_COUNT),
+                        TestSupport.node("j", TestSupport.TYPE_PASS, TestSupport.data(
+                                "triggerRule", "ALL_DONE"
+                        ))
+                ),
+                List.of(
+                        TestSupport.edge("1", "s", "br"),
+                        TestSupport.edge("2", "br", "left"),
+                        TestSupport.edge("3", "br", "right"),
+                        TestSupport.edge("4", "left", "j"),
+                        TestSupport.edge("5", "right", "j")
+                )
+        );
+        try (FlowExecutorPro ex = new FlowExecutorPro(g, new TestSupport.CollectingListener())) {
+            ExecutionContext c = ctx("b");
+            ex.execute(c);
+            assertEquals(0, TestSupport.CountNode.GLOBAL.get(),
+                    "no branch matched -> no downstream may execute");
+            assertTrue(c.getNodeExecutionResult("left").get().isSkipped());
+            assertTrue(c.getNodeExecutionResult("right").get().isSkipped());
+            // ALL_DONE 将 SKIPPED 也视为 done：合流节点仍按规则语义运行
+            assertTrue(c.getNodeExecutionResult("j").isPresent());
+            assertTrue(c.getNodeExecutionResult("j").get().isSuccess());
+            assertEquals(FlowExecutorPro.ExecutionState.COMPLETED, ex.getExecutionState());
         }
     }
 
@@ -233,11 +305,18 @@ class FlowExecutorProTest {
             assertEquals("p", ex.getPausedNodeId());
             assertTrue(listener.paused.get() >= 1);
             assertEquals(0, TestSupport.CountNode.GLOBAL.get());
+            // pause 阶段：context 中是 failed 占位结果
+            assertFalse(c.getNodeExecutionResult("p").get().isSuccess());
 
             ex.resume(c);
             assertEquals(FlowExecutorPro.ExecutionState.COMPLETED, ex.getExecutionState());
             assertEquals(1, TestSupport.CountNode.GLOBAL.get());
             assertTrue(c.getNodeExecutionResult("after").get().isSuccess());
+            // 修复回归：resume 必须用 SUCCESS 结果覆盖 pause 占位，否则下游取数门控数据断流
+            assertTrue(c.getNodeExecutionResult("p").get().isSuccess(),
+                    "resumed node's context result must be overwritten with SUCCESS");
+            FlowExecutionResult r = listener.flowResults.get(listener.flowResults.size() - 1);
+            assertTrue(r.getSucceedNodes().contains("p"));
         }
     }
 
@@ -300,6 +379,32 @@ class FlowExecutorProTest {
             assertTrue(elapsed < 5000, "should not wait for full sleepMs, elapsed=" + elapsed);
             assertFalse(listener.flowResults.isEmpty());
             assertTrue(listener.flowResults.get(listener.flowResults.size() - 1).isTimedOut());
+        }
+    }
+
+    @Test
+    @Timeout(value = 15, unit = TimeUnit.SECONDS)
+    void flowTimeout_wideParallel_noStragglerHang() throws Exception {
+        // 宽并行下看门狗与 submitTask 占位登记存在竞态窗口：
+        // 若真实 Future 漏过 cancel 扫描且无事后二次校验，它会跑完整个 sleepMs 导致整体耗时被拖长
+        List<GNode> nodes = new ArrayList<>();
+        List<GEdge> edges = new ArrayList<>();
+        nodes.add(TestSupport.node("s", "start"));
+        for (int i = 0; i < 60; i++) {
+            String id = "n" + i;
+            nodes.add(TestSupport.node(id, TestSupport.TYPE_SLOW, TestSupport.data("sleepMs", 3000)));
+            edges.add(TestSupport.edge("e" + i, "s", id));
+        }
+        Graph g = TestSupport.graph(nodes, edges);
+        TestSupport.CollectingListener listener = new TestSupport.CollectingListener();
+        try (FlowExecutorPro ex = new FlowExecutorPro(g, listener, null, 300L)) {
+            long t0 = System.currentTimeMillis();
+            ex.execute(ctx("wide"));
+            long elapsed = System.currentTimeMillis() - t0;
+            assertEquals(FlowExecutorPro.ExecutionState.TIMED_OUT, ex.getExecutionState());
+            assertTrue(listener.timedOut.get() >= 1);
+            // 所有在途/排队 future 必须被回收：不能出现超时后还有任务跑完整 3s sleep
+            assertTrue(elapsed < 2800, "straggler task kept running after timeout, elapsed=" + elapsed);
         }
     }
 

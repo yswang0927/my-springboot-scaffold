@@ -78,4 +78,31 @@ class GraphTest {
         assertTrue(g.isIsolatedNode("alone"));
         assertTrue(g.getIsolatedNodes().contains("alone"));
     }
+
+    @Test
+    void findSubGraphReachingTarget_missingTarget_returnsNullConsistently() {
+        // 边非空 + 目标不存在：旧实现返回空 Graph，与 javadoc“不存在返 null”契约矛盾
+        Graph withEdges = TestSupport.graph(
+                List.of(TestSupport.node("a", "test_pass"), TestSupport.node("b", "test_pass")),
+                List.of(TestSupport.edge("1", "a", "b"))
+        );
+        assertNull(withEdges.findSubGraphReachingTarget("ghost", true));
+        assertNull(withEdges.findSubGraphReachingTarget("ghost", false));
+
+        // 边为空 + 目标不存在：保持原有 null 行为
+        Graph noEdges = TestSupport.graph(
+                List.of(TestSupport.node("a", "test_pass")),
+                List.of()
+        );
+        assertNull(noEdges.findSubGraphReachingTarget("ghost", true));
+        assertNull(noEdges.findSubGraphReachingTarget(null, true));
+
+        // 目标存在时行为不变：反向可达子图含全部前驱
+        Graph sub = withEdges.findSubGraphReachingTarget("b", true);
+        assertNotNull(sub);
+        assertEquals(2, sub.getNodes().size());
+        Graph subNoTarget = withEdges.findSubGraphReachingTarget("b", false);
+        assertNotNull(subNoTarget);
+        assertEquals(1, subNoTarget.getNodes().size());
+    }
 }

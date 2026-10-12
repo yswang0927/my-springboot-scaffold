@@ -249,15 +249,14 @@ public class Graph {
             return null;
         }
 
-        if (this.nodes.isEmpty()) {
+        // 目标节点不存在时统一返回 null（与 javadoc 契约一致），
+        // 避免旧实现中“边为空返 null、边非空返空 Graph”的不一致
+        GNode targetNode = this.nodesMap.get(targetNodeId);
+        if (targetNode == null) {
             return null;
         }
 
         if (this.edges.isEmpty()) {
-            GNode targetNode = this.nodesMap.get(targetNodeId);
-            if (targetNode == null) {
-                return null;
-            }
             // 如果不包含目标节点，则返回 null
             if (!includeTargetNode) {
                 return null;

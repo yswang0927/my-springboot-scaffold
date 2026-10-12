@@ -361,10 +361,13 @@ public class FlowExecutorPro implements AutoCloseable {
                 NodeExecutionResult successResult = NodeExecutionResult.success()
                         .setNodeId(nodeId)
                         .setEndTime(Instant.now());
-                // 若上下文尚无结果，写入成功占位，便于下游取数
-                if (ctx.getNodeExecutionResult(nodeId).isEmpty()) {
-                    ctx.addNodeExecutionResult(nodeId, successResult);
-                }
+                // pause 阶段已向 context 写入 isSuccess()==false 的占位结果，
+                // resume 必须无条件覆盖它，否则下游按 (isSuccess && !isSkipped) 门控
+                // 收集输入时会数据断流（addNodeExecutionResult 是 put 覆盖语义）。
+                // 若原结果携带输出（如外部注入的交互数据），按端口保留。
+                ctx.getNodeExecutionResult(nodeId)
+                        .ifPresent(prev -> prev.getNodeOutputs().forEach(successResult::addNodeOutput));
+                ctx.addNodeExecutionResult(nodeId, successResult);
                 notifyNodeCompletion(successResult);
                 evaluateAndTriggerDownstream(nodeId, ctx, null);
             }
@@ -723,8 +726,10 @@ public class FlowExecutorPro implements AutoCloseable {
                     continue;
                 }
 
+                // activatedBranch 语义：null=无分支决策（普通节点/失败级联路径）；
+                // 非 null（含空集合）=分支已决定激活范围，不在集合内的直接下游一律排除。
+                // 空集合命中所有直接下游全部排除，防止“分支未命中时穿透执行”。
                 final boolean isBranchSkipped = (eval.activatedBranch() != null
-                        && !eval.activatedBranch().isEmpty()
                         && !eval.activatedBranch().contains(dependentId));
 
                 final int remainingDependencies = this.currentInDegree.get(dependentId).decrementAndGet();
@@ -954,6 +959,14 @@ public class FlowExecutorPro implements AutoCloseable {
 
         this.runningFutures.put(nodeId, future);
         this.future2NodeIdMap.put(future, nodeId);
+
+        // 竞态兜底：若超时/取消发生在占位登记与真实 Future 登记之间，
+        // triggerFlowTimeout/cancel 的扫描只能碰到 dummy future，真实任务会漏网继续运行。
+        // 登记后二次校验：流程已非 RUNNING 则立即回收刚提交的 future。
+        // 被 cancel 的 future 会被主循环 consume（CancellationException -> handleCancellation），不会丢事件。
+        if (this.executionState != ExecutionState.RUNNING || this.flowTimedOut.get()) {
+            future.cancel(true);
+        }
     }
 
     // ==================== 整图超时看门狗 ====================
@@ -1099,7 +1112,15 @@ public class FlowExecutorPro implements AutoCloseable {
         }
 
         result.setEndTime(Instant.now());
-        result.setSucceedNodes(this.completedNodes);
+        // succeedNodes 只应包含真正以 SUCCESS 结束的节点；
+        // completedNodes 的语义是“已结束生命周期”（含 FAILED/SKIPPED/CANCELLED/PAUSED），不能直接传递。
+        Set<String> trulySucceeded = new LinkedHashSet<>();
+        for (Map.Entry<String, TaskNode> e : this.runNodes.entrySet()) {
+            if (e.getValue().getTaskState() == TaskState.SUCCESS) {
+                trulySucceeded.add(e.getKey());
+            }
+        }
+        result.setSucceedNodes(trulySucceeded);
         for (NodeExecutionResult f : this.failedTasks) {
             result.addFailedNode(f.getNodeId(), f.getErrorMessage());
         }

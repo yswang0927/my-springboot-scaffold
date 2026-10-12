@@ -75,6 +75,21 @@ public class FlowExecutionResult {
         return this;
     }
 
+    /**
+     * 真正以 SUCCESS 结束的节点 id 列表（不含 FAILED/SKIPPED/CANCELLED 等）。
+     */
+    public List<String> getSucceedNodes() {
+        return Collections.unmodifiableList(this.succeedNodes);
+    }
+
+    /**
+     * 失败节点详情：nodeId -> 失败原因。
+     * 返回不可修改视图。
+     */
+    public Map<String, String> getFailedNodes() {
+        return Collections.unmodifiableMap(this.failedNodes);
+    }
+
     public FlowExecutionResult setSucceedNodes(Collection<String> succeedNodeIds) {
         if (succeedNodeIds != null && succeedNodeIds.size() > 0) {
             this.succeedNodes.addAll(succeedNodeIds);

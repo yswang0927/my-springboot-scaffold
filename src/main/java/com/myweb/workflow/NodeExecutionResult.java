@@ -13,8 +13,10 @@ public class NodeExecutionResult {
     private final Throwable error;
     private String errorMessage = "";
     private boolean skipped = false;
-    // 此节点执行后，待激活的后续节点(分支节点需要设置此值)
-    private Set<String> nextNodesToActivate = new HashSet<>();
+    // 此节点执行后，待激活的后续节点(分支节点需要设置此值)。
+    // null：无分支语义（普通节点），引擎不做分支排除；
+    // 非 null（含空集合）：分支已做出决定，仅激活集合内的直接下游，空集合表示什么都不激活。
+    private Set<String> nextNodesToActivate = null;
     // 节点的输出<Port, NodeOutput>
     private Map<String, NodeOutput> nodeOutputs = new HashMap<>();
     private Instant startTime;
@@ -59,9 +61,11 @@ public class NodeExecutionResult {
     }
 
     public NodeExecutionResult setNextNodesToActivate(Collection<String> nextNodeIds) {
-        this.nextNodesToActivate.clear();
-        if (nextNodeIds != null && nextNodeIds.size() > 0) {
-            this.nextNodesToActivate.addAll(nextNodeIds);
+        if (nextNodeIds != null) {
+            // 保留空集合：分支未命中任何路径时，引擎需据此排除全部直接下游
+            this.nextNodesToActivate = new HashSet<>(nextNodeIds);
+        } else {
+            this.nextNodesToActivate = null;
         }
         return this;
     }
@@ -88,6 +92,13 @@ public class NodeExecutionResult {
      */
     public NodeOutput getNodeOutput(String outputPort) {
         return this.nodeOutputs.get(outputPort);
+    }
+
+    /**
+     * 获取所有输出端口上的输出数据（只读视图）
+     */
+    public Map<String, NodeOutput> getNodeOutputs() {
+        return Collections.unmodifiableMap(this.nodeOutputs);
     }
 
     public NodeExecutionResult setErrorMessage(String message) {
