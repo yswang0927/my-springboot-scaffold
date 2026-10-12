@@ -35,7 +35,13 @@ import com.myweb.workflow.nodes.StartNode;
 public class FlowExecutorPro implements AutoCloseable {
     private static final Logger LOG = LoggerFactory.getLogger(FlowExecutorPro.class);
 
+    /** 空闲时主循环 poll 上限（秒） */
     private static final int TASK_POLL_TIMEOUT_SECONDS = 2;
+    /**
+     * 有待执行重试或就绪队列非空时的短 poll（毫秒）。
+     * 避免 retry 仅 offerReady 后主循环仍阻塞在 2s poll 上，把 retryDelayMillis 量化成 ~2s。
+     */
+    private static final long RETRY_WAIT_POLL_MILLIS = 50L;
     private static final int SHUTDOWN_AWAIT_SECONDS = 10;
     private static final int MAX_POOL_SIZE_CEILING = 256;
 
@@ -226,6 +232,50 @@ public class FlowExecutorPro implements AutoCloseable {
     }
 
     /**
+     * 主循环 poll 超时：空闲用长超时省 CPU；有重试在途或就绪队列非空时用短超时，
+     * 使 retryDelayMillis 近似生效，而不会被量化到 {@link #TASK_POLL_TIMEOUT_SECONDS}。
+     */
+    private long nextPollTimeoutMillis() {
+        if (!this.readyQueue.isEmpty() || this.scheduledRetryTasksNum.get() > 0) {
+            return RETRY_WAIT_POLL_MILLIS;
+        }
+        return TimeUnit.SECONDS.toMillis(TASK_POLL_TIMEOUT_SECONDS);
+    }
+
+    /**
+     * resume 时重新扫描：所有仍为 PENDING、且未被分支排除、触发规则已满足的节点，重新入就绪队列。
+     * 覆盖「暂停期间到期的重试回调因 state!=RUNNING 未入队」的情况。
+     */
+    private void reofferPendingReadyNodes(ExecutionContext context) {
+        for (TaskNode node : this.runNodes.values()) {
+            final String id = node.getId();
+            if (node.getTaskState() != TaskState.PENDING) {
+                continue;
+            }
+            if (this.branchExcludedNodes.containsKey(id)) {
+                continue;
+            }
+            if (this.completedNodes.contains(id)) {
+                continue;
+            }
+            Collection<String> upstreamNodeIds = this.dagGraph.getUpstreamNodes(id);
+            List<TaskState> upstreamStates = new ArrayList<>(upstreamNodeIds.size());
+            for (String unid : upstreamNodeIds) {
+                TaskNode up = this.runNodes.get(unid);
+                upstreamStates.add(up != null ? up.getTaskState() : TaskState.PENDING);
+            }
+            TaskTriggerRule rule = node.getTriggerRule();
+            if (rule == null) {
+                rule = TaskTriggerRule.ALL_SUCCESS;
+            }
+            if (rule == TaskTriggerRule.ALWAYS || rule.evaluate(upstreamStates)) {
+                offerReady(id);
+            }
+        }
+        submitReadyTasks(context);
+    }
+
+    /**
      * 执行 workflow（阻塞直至完成、失败、取消或暂停）。
      */
     public void execute(ExecutionContext context) {
@@ -321,6 +371,9 @@ public class FlowExecutorPro implements AutoCloseable {
             }
         }
 
+        // PAUSED 期间到期的重试只保持 PENDING、未入队；恢复后把已可运行的 PENDING 节点重新入队
+        reofferPendingReadyNodes(ctx);
+
         armWatchdog();
 
         try {
@@ -365,14 +418,23 @@ public class FlowExecutorPro implements AutoCloseable {
                 break;
             }
 
-            Future<NodeExecutionResult> completedFuture =
-                    this.executorService.poll(TASK_POLL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            // 自适应 poll：有重试在途或已有就绪任务时用短超时，避免把 retryDelay 量化到 2s
+            final long pollMillis = nextPollTimeoutMillis();
+            final Future<NodeExecutionResult> completedFuture;
+            try {
+                completedFuture = this.executorService.poll(pollMillis, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                cancelAllRunningTasks(ExecutionState.FAILED);
+                break;
+            }
             if (completedFuture == null) {
-                if (this.runningFutures.isEmpty() && !this.readyQueue.isEmpty()) {
+                if (!this.readyQueue.isEmpty()) {
                     submitReadyTasks(context);
                     continue;
                 }
-                if (this.runningFutures.isEmpty() && this.readyQueue.isEmpty()
+                if (this.runningFutures.isEmpty()
+                        && this.readyQueue.isEmpty()
                         && this.scheduledRetryTasksNum.get() == 0) {
                     if (this.completedTasksNum.get() < this.runNodes.size()) {
                         LOG.warn(">> WARNING: Execution loop exited early. Completed: {}, Total: {}, Missing: {}",
@@ -418,30 +480,63 @@ public class FlowExecutorPro implements AutoCloseable {
 
     private void processCompletedFuture(Future<NodeExecutionResult> completedFuture,
                                         ExecutionContext context) throws InterruptedException {
-        String finishedNodeId = this.future2NodeIdMap.remove(completedFuture);
-        if (finishedNodeId == null) {
-            return;
-        }
-        this.runningFutures.remove(finishedNodeId);
-
+        // 先 take 结果，再解析 nodeId：极快任务可能在 future2NodeIdMap.put 之前就完成，
+        // 若仅依赖 map 会丢事件，节点永久停在 RUNNING，主循环因 runningFutures 非空而挂死。
+        NodeExecutionResult taskResult = null;
+        Throwable executionError = null;
+        boolean cancelled = false;
         try {
-            NodeExecutionResult taskResult = completedFuture.get();
-            handleTaskCompletion(finishedNodeId, taskResult, context);
+            taskResult = completedFuture.get();
         } catch (ExecutionException e) {
-            Throwable cause = e.getCause();
-            NodeExecutionResult execResult = NodeExecutionResult.failed(cause)
-                    .setNodeId(finishedNodeId)
-                    .setEndTime(Instant.now());
-            dispatchFailure(finishedNodeId, execResult, context);
+            executionError = e.getCause() != null ? e.getCause() : e;
         } catch (CancellationException e) {
-            handleCancellation(finishedNodeId, context);
+            cancelled = true;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             cancelAllRunningTasks(ExecutionState.FAILED);
             throw e;
-        } catch (Exception e) {
-            handleTaskFailure(NodeExecutionResult.failed(e).setNodeId(finishedNodeId), context, true);
         }
+
+        String finishedNodeId = this.future2NodeIdMap.remove(completedFuture);
+        if (finishedNodeId == null && taskResult != null) {
+            finishedNodeId = taskResult.getNodeId();
+        }
+        // 反向：从 runningFutures 找到同一个 future
+        if (finishedNodeId == null) {
+            for (Map.Entry<String, Future<NodeExecutionResult>> e : this.runningFutures.entrySet()) {
+                if (e.getValue() == completedFuture) {
+                    finishedNodeId = e.getKey();
+                    break;
+                }
+            }
+        }
+        if (finishedNodeId == null) {
+            LOG.warn(">> WARNING: Completed future with unknown node id, ignored");
+            return;
+        }
+
+        this.runningFutures.remove(finishedNodeId);
+        this.future2NodeIdMap.remove(completedFuture);
+
+        if (cancelled) {
+            handleCancellation(finishedNodeId, context);
+            return;
+        }
+        if (executionError != null) {
+            NodeExecutionResult execResult = NodeExecutionResult.failed(executionError)
+                    .setNodeId(finishedNodeId)
+                    .setEndTime(Instant.now());
+            dispatchFailure(finishedNodeId, execResult, context);
+            return;
+        }
+        if (taskResult == null) {
+            handleTaskFailure(NodeExecutionResult.failed("null result").setNodeId(finishedNodeId), context, true);
+            return;
+        }
+        if (taskResult.getNodeId() == null) {
+            taskResult.setNodeId(finishedNodeId);
+        }
+        handleTaskCompletion(finishedNodeId, taskResult, context);
     }
 
     private void handleTaskCompletion(String nodeId, NodeExecutionResult result, ExecutionContext context) {
@@ -491,17 +586,20 @@ public class FlowExecutorPro implements AutoCloseable {
             int attempt = this.retryCounts.get(failedNodeId).incrementAndGet();
             if (attempt <= maxRetries) {
                 LOG.warn(">> WARNING: Retry task <{}> attempt {}/{}", failedNodeId, attempt, maxRetries);
-                // ★ 关键修复：恢复 PENDING，否则二次 submitTask 会被 CAS 拒绝
+                // ★ 恢复 PENDING，否则二次 submit 会被 CAS 拒绝
                 failedNode.setTaskState(TaskState.PENDING);
                 this.scheduledRetryTasksNum.incrementAndGet();
-                final long delay = failedNode.getRetryDelayMillis();
+                final long delay = Math.max(0L, failedNode.getRetryDelayMillis());
+                // 仅 offerReady 单通道：调度线程不写 runningFutures，避免与主循环竞态泄漏；
+                // 配合 nextPollTimeoutMillis() 在有重试在途时用 50ms 短 poll，时延不会被抬到 2s。
                 this.retryExecutorService.schedule(() -> {
                     try {
                         if (this.executionState == ExecutionState.RUNNING) {
-                            submitTask(failedNodeId, context);
+                            offerReady(failedNodeId);
                         }
+                        // PAUSED 时不入队：节点保持 PENDING，resume 时由 reofferPendingReadyNodes 统一激活
                     } catch (Exception e) {
-                        LOG.error(">> ERROR: Retry submit failed for <{}>", failedNodeId, e);
+                        LOG.error(">> ERROR: Retry enqueue failed for <{}>", failedNodeId, e);
                     } finally {
                         this.scheduledRetryTasksNum.decrementAndGet();
                     }
@@ -815,6 +913,9 @@ public class FlowExecutorPro implements AutoCloseable {
                 runNode.setTaskState(TaskState.RUNNING);
             }
         }
+
+        // 占位登记，缩小 "任务已完成但 map 未写入" 的窗口；真正 Future 随后替换
+        this.runningFutures.put(nodeId, CompletableFuture.completedFuture(null));
 
         Future<NodeExecutionResult> future = this.executorService.submit(() -> {
             Instant startTime = Instant.now();
