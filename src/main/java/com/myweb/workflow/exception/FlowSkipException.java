@@ -6,5 +6,18 @@ package com.myweb.workflow.exception;
  * 例如，当它知道没有可用数据时跳过.
  */
 public class FlowSkipException extends FastException {
+    public FlowSkipException() {
+    }
 
+    public FlowSkipException(String message) {
+        super(message);
+    }
+
+    public FlowSkipException(String message, Throwable cause) {
+        super(message, cause);
+    }
+
+    public FlowSkipException(Throwable cause) {
+        super(cause);
+    }
 }

@@ -16,6 +16,10 @@ public class FlowExecutionResult {
     private Instant endTime;
 
     private boolean success = false;
+    /** 是否因整图超时而结束 */
+    private boolean timedOut = false;
+    /** 超时说明（如 "flow timeout after 120000 ms"） */
+    private String timeoutMessage;
 
     public Instant getStartTime() {
         return startTime;
@@ -41,6 +45,27 @@ public class FlowExecutionResult {
 
     public void setSuccess(boolean success) {
         this.success = success;
+    }
+
+    public boolean isTimedOut() {
+        return timedOut;
+    }
+
+    public FlowExecutionResult setTimedOut(boolean timedOut) {
+        this.timedOut = timedOut;
+        if (timedOut) {
+            this.success = false;
+        }
+        return this;
+    }
+
+    public String getTimeoutMessage() {
+        return timeoutMessage;
+    }
+
+    public FlowExecutionResult setTimeoutMessage(String timeoutMessage) {
+        this.timeoutMessage = timeoutMessage;
+        return this;
     }
 
     public FlowExecutionResult addSucceedNode(String nodeId) {

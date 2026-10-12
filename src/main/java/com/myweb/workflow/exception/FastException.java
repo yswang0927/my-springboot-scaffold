@@ -4,7 +4,7 @@ import java.io.PrintStream;
 import java.io.PrintWriter;
 
 /**
- * 轻量级异常类，通过禁用堆栈追踪（stack trace）的生成和打印来减少异常抛出时的开销。
+ * 轻量级异常：禁用堆栈填充以降低控制流异常开销。
  */
 abstract class FastException extends RuntimeException {
     public FastException() {
@@ -13,6 +13,14 @@ abstract class FastException extends RuntimeException {
 
     public FastException(String message) {
         super(message);
+    }
+
+    public FastException(String message, Throwable cause) {
+        super(message, cause);
+    }
+
+    public FastException(Throwable cause) {
+        super(cause);
     }
 
     @Override
@@ -44,10 +52,4 @@ abstract class FastException extends RuntimeException {
     public void printStackTrace(PrintWriter s) {
         // ignored
     }
-
-    @Override
-    public synchronized Throwable initCause(Throwable cause) {
-        return this;
-    }
-
 }

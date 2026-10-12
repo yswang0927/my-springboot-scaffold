@@ -6,5 +6,18 @@ package com.myweb.workflow.exception;
  * 例如，当它检测到其 API 密钥无效时快速失败（因为重试不会修复）。
  */
 public class FlowFailException extends FastException {
+    public FlowFailException() {
+    }
 
+    public FlowFailException(String message) {
+        super(message);
+    }
+
+    public FlowFailException(String message, Throwable cause) {
+        super(message, cause);
+    }
+
+    public FlowFailException(Throwable cause) {
+        super(cause);
+    }
 }

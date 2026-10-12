@@ -32,4 +32,13 @@ public interface ExecutionListener {
     default void onFlowPaused(String executionId, String flowStateData) {
     }
 
+    /**
+     * 整图执行超时（看门狗触发）时回调。
+     *
+     * @param timeoutMillis 配置的超时毫秒数
+     * @param message       说明信息
+     */
+    default void onFlowTimedOut(long timeoutMillis, String message) {
+    }
+
 }

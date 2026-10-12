@@ -6,4 +6,10 @@ package com.myweb.workflow.exception;
  * 并将界面UI内容输出到客户端浏览器进行渲染展示, 并由用户触发后续执行.
  */
 public class FlowPauseException extends FastException {
+    public FlowPauseException() {
+    }
+
+    public FlowPauseException(String message) {
+        super(message);
+    }
 }
