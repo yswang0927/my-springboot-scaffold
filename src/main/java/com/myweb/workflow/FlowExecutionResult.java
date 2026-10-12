@@ -11,6 +11,7 @@ public class FlowExecutionResult {
     private List<String> succeedNodes = new ArrayList<>();
     // <nodeId, failedReason>
     private Map<String, String> failedNodes = new HashMap<>();
+    private List<String> skippedNodes = new ArrayList<>();
 
     private Instant startTime;
     private Instant endTime;
@@ -100,6 +101,28 @@ public class FlowExecutionResult {
     public FlowExecutionResult addFailedNode(String nodeId, String failedReason) {
         if (nodeId != null) {
             this.failedNodes.put(nodeId, failedReason != null ? failedReason : "");
+        }
+        return this;
+    }
+
+    /**
+     * 被跳过（SKIPPED）的节点 id 列表。
+     */
+    public List<String> getSkippedNodes() {
+        return Collections.unmodifiableList(this.skippedNodes);
+    }
+
+    public FlowExecutionResult setSkippedNodes(Collection<String> skippedNodeIds) {
+        this.skippedNodes.clear();
+        if (skippedNodeIds != null && !skippedNodeIds.isEmpty()) {
+            this.skippedNodes.addAll(skippedNodeIds);
+        }
+        return this;
+    }
+
+    public FlowExecutionResult addSkippedNode(String nodeId) {
+        if (nodeId != null) {
+            this.skippedNodes.add(nodeId);
         }
         return this;
     }

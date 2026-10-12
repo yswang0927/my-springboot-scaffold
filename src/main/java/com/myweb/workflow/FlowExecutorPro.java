@@ -62,7 +62,7 @@ public class FlowExecutorPro implements AutoCloseable {
     /** 暂停时的上下文引用，供 resume 使用 */
     private volatile ExecutionContext pausedContext;
 
-    private final ExecutorCompletionService<NodeExecutionResult> executorService;
+    private volatile ExecutorCompletionService<NodeExecutionResult> executorService;
     private final ScheduledExecutorService retryExecutorService;
     private final ExecutionListener executionListener;
 
@@ -185,6 +185,8 @@ public class FlowExecutorPro implements AutoCloseable {
         this.runningFutures.values().forEach(f -> f.cancel(true));
         this.runningFutures.clear();
         this.future2NodeIdMap.clear();
+        // 重新实例化 ExecutorCompletionService，彻底清空内部 completionQueue 中的旧 Future，隔离跨轮次执行
+        this.executorService = new ExecutorCompletionService<>(this.actualExecutor);
         this.completedTasksNum.set(0);
         this.scheduledRetryTasksNum.set(0);
         this.failedTasks.clear();
@@ -307,7 +309,7 @@ public class FlowExecutorPro implements AutoCloseable {
 
         try {
             runMainLoop(context);
-            finalizeExecution(flowExecutionResult);
+            finalizeExecution(flowExecutionResult, context);
         } catch (Exception e) {
             LOG.error("Execution Loop Error", e);
             cancelAllRunningTasks(ExecutionState.FAILED);
@@ -380,7 +382,7 @@ public class FlowExecutorPro implements AutoCloseable {
 
         try {
             runMainLoop(ctx);
-            finalizeExecution(flowExecutionResult);
+            finalizeExecution(flowExecutionResult, ctx);
         } catch (Exception e) {
             LOG.error("Resume Execution Loop Error", e);
             cancelAllRunningTasks(ExecutionState.FAILED);
@@ -464,11 +466,11 @@ public class FlowExecutorPro implements AutoCloseable {
      * @param submitNew 是否在收割后继续提交就绪队列（正常 RUNNING 为 true；PAUSED 为 false）
      */
     private void drainRunningFutures(ExecutionContext context, boolean submitNew) throws InterruptedException {
-        while (!this.runningFutures.isEmpty() || this.scheduledRetryTasksNum.get() > 0) {
+        while (!this.runningFutures.isEmpty() || (shouldWaitForRetries() && this.scheduledRetryTasksNum.get() > 0)) {
             Future<NodeExecutionResult> completedFuture = this.executorService.poll(TASK_POLL_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             if (completedFuture == null) {
-                // 重试仍在排队时继续等
-                if (this.runningFutures.isEmpty() && this.scheduledRetryTasksNum.get() == 0) {
+                // 重试仍在排队时继续等（仅在非终态有效；超时/取消/失败终态下无需空等未触发的重试）
+                if (this.runningFutures.isEmpty() && (!shouldWaitForRetries() || this.scheduledRetryTasksNum.get() == 0)) {
                     break;
                 }
                 continue;
@@ -480,6 +482,11 @@ public class FlowExecutorPro implements AutoCloseable {
                 submitReadyTasks(context);
             }
         }
+    }
+
+    private boolean shouldWaitForRetries() {
+        ExecutionState s = this.executionState;
+        return (s == ExecutionState.RUNNING || s == ExecutionState.PAUSED) && !this.flowTimedOut.get();
     }
 
     private void processCompletedFuture(Future<NodeExecutionResult> completedFuture,
@@ -1075,7 +1082,7 @@ public class FlowExecutorPro implements AutoCloseable {
         return this.pausedNodeId;
     }
 
-    private void finalizeExecution(FlowExecutionResult result) {
+    private void finalizeExecution(FlowExecutionResult result, ExecutionContext context) {
         synchronized (this.stateLock) {
             if (this.executionState == ExecutionState.TIMED_OUT || this.flowTimedOut.get()) {
                 this.executionState = ExecutionState.TIMED_OUT;
@@ -1115,12 +1122,26 @@ public class FlowExecutorPro implements AutoCloseable {
         // succeedNodes 只应包含真正以 SUCCESS 结束的节点；
         // completedNodes 的语义是“已结束生命周期”（含 FAILED/SKIPPED/CANCELLED/PAUSED），不能直接传递。
         Set<String> trulySucceeded = new LinkedHashSet<>();
+        Set<String> skipped = new LinkedHashSet<>();
         for (Map.Entry<String, TaskNode> e : this.runNodes.entrySet()) {
-            if (e.getValue().getTaskState() == TaskState.SUCCESS) {
+            TaskState state = e.getValue().getTaskState();
+            if (state == TaskState.SUCCESS) {
                 trulySucceeded.add(e.getKey());
+            } else if (state == TaskState.SKIPPED) {
+                skipped.add(e.getKey());
+            } else if (state == TaskState.UPSTREAM_FAILED) {
+                // 补充连带失败节点：从 context 获取具体原因（如 "Upstream failed."），回填入 failedNodes
+                String reason = context != null
+                        ? context.getNodeExecutionResult(e.getKey())
+                                .map(NodeExecutionResult::getErrorMessage)
+                                .filter(msg -> !msg.isBlank())
+                                .orElse("Upstream failed.")
+                        : "Upstream failed.";
+                result.addFailedNode(e.getKey(), reason);
             }
         }
         result.setSucceedNodes(trulySucceeded);
+        result.setSkippedNodes(skipped);
         for (NodeExecutionResult f : this.failedTasks) {
             result.addFailedNode(f.getNodeId(), f.getErrorMessage());
         }

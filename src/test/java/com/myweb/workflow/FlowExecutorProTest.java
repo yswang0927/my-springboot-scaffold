@@ -177,6 +177,7 @@ class FlowExecutorProTest {
             assertFalse(r.getSucceedNodes().contains("f"));
             assertFalse(r.getSucceedNodes().contains("d"));
             assertTrue(r.getFailedNodes().containsKey("f"));
+            assertTrue(r.getFailedNodes().containsKey("d"), "UPSTREAM_FAILED 节点也应纳入 failedNodes 报告");
         }
     }
 
@@ -241,7 +242,8 @@ class FlowExecutorProTest {
                         TestSupport.edge("5", "right", "j")
                 )
         );
-        try (FlowExecutorPro ex = new FlowExecutorPro(g, new TestSupport.CollectingListener())) {
+        TestSupport.CollectingListener listener = new TestSupport.CollectingListener();
+        try (FlowExecutorPro ex = new FlowExecutorPro(g, listener)) {
             ExecutionContext c = ctx("b");
             ex.execute(c);
             assertEquals(0, TestSupport.CountNode.GLOBAL.get(),
@@ -252,6 +254,45 @@ class FlowExecutorProTest {
             assertTrue(c.getNodeExecutionResult("j").isPresent());
             assertTrue(c.getNodeExecutionResult("j").get().isSuccess());
             assertEquals(FlowExecutorPro.ExecutionState.COMPLETED, ex.getExecutionState());
+
+            FlowExecutionResult r = listener.flowResults.get(listener.flowResults.size() - 1);
+            assertTrue(r.getSkippedNodes().contains("left"));
+            assertTrue(r.getSkippedNodes().contains("right"));
+            assertFalse(r.getSkippedNodes().contains("s"));
+        }
+    }
+
+    @Test
+    @Timeout(value = 15, unit = TimeUnit.SECONDS)
+    void multiExecution_resetsCompletionQueue_isolatesGhostFutures() throws Exception {
+        // 同一执行器复用场景（如 CronFlowScheduler）：每轮重置必须清空并重建 completionQueue
+        Graph g = TestSupport.graph(
+                List.of(
+                        TestSupport.node("s", "start"),
+                        TestSupport.node("a", TestSupport.TYPE_PASS),
+                        TestSupport.node("o", "output")
+                ),
+                List.of(
+                        TestSupport.edge("1", "s", "a"),
+                        TestSupport.edge("2", "a", "o")
+                )
+        );
+        TestSupport.CollectingListener listener = new TestSupport.CollectingListener();
+        try (FlowExecutorPro ex = new FlowExecutorPro(g, listener)) {
+            // 第 1 轮
+            ExecutionContext c1 = ctx("run1");
+            ex.execute(c1);
+            assertEquals(FlowExecutorPro.ExecutionState.COMPLETED, ex.getExecutionState());
+            assertEquals(1, listener.flowResults.size());
+            assertTrue(listener.flowResults.get(0).isSuccess());
+
+            // 第 2 轮
+            ExecutionContext c2 = ctx("run2");
+            ex.execute(c2);
+            assertEquals(FlowExecutorPro.ExecutionState.COMPLETED, ex.getExecutionState());
+            assertEquals(2, listener.flowResults.size());
+            assertTrue(listener.flowResults.get(1).isSuccess());
+            assertTrue(listener.flowResults.get(1).getSucceedNodes().contains("a"));
         }
     }
 
