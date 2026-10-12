@@ -18,7 +18,10 @@ import java.util.concurrent.atomic.AtomicReference;
  * {
  *   "triggerRule": "ALL_SUCCESS",   // 见 TaskTriggerRule 枚举名，大小写不敏感
  *   "maxRetries": 3,
- *   "retryDelayMillis": 1000
+ *   "retryDelayMillis": 1000,
+ *   "retryBackoffCoefficient": 2.0, // 退避系数，>=1.0；1.0=固定间隔（默认）
+ *   "retryMaxIntervalMillis": 30000,// 单次重试等待上限（默认 30s）
+ *   "retryJitter": 0.2               // 抖动比例 [0,1)，默认 0
  * }
  * </pre>
  */
@@ -29,13 +32,23 @@ public abstract class AbstractNode implements TaskNode {
     private final TaskTriggerRule triggerRule;
     private final int maxRetries;
     private final long retryDelayMillis;
+    private final double retryBackoffCoefficient;
+    private final long retryMaxIntervalMillis;
+    private final double retryJitter;
 
     public AbstractNode(GNode gNode) {
         this.gNode = gNode;
         Map<String, Object> data = gNode != null ? gNode.getData() : null;
         this.triggerRule = parseTriggerRule(data);
+
         this.maxRetries = parseNonNegativeInt(data, "maxRetries", 3);
         this.retryDelayMillis = parseNonNegativeLong(data, "retryDelayMillis", 1000L);
+        // 非法/小于 1 的系数回退为 1.0（固定间隔），保证退避只增不减
+        double coeff = parseDouble(data, "retryBackoffCoefficient", 2.0);
+        this.retryBackoffCoefficient = Math.max(1.0, coeff);
+        this.retryMaxIntervalMillis = Math.max(0L, parseNonNegativeLong(data, "retryMaxIntervalMillis", 30_000L));
+        // clamp 到 [0, 1)：1.0 会让延迟最多翻三倍，超出设计意图
+        this.retryJitter = Math.min(0.99, Math.max(0.0, parseDouble(data, "retryJitter", 0.0)));
     }
 
     @Override
@@ -77,21 +90,40 @@ public abstract class AbstractNode implements TaskNode {
         return this.retryDelayMillis;
     }
 
+    @Override
+    public double getRetryBackoffCoefficient() {
+        return this.retryBackoffCoefficient;
+    }
+
+    @Override
+    public long getRetryMaxIntervalMillis() {
+        return this.retryMaxIntervalMillis;
+    }
+
+    @Override
+    public double getRetryJitter() {
+        return this.retryJitter;
+    }
+
     private static TaskTriggerRule parseTriggerRule(Map<String, Object> data) {
         if (data == null) {
             return TaskTriggerRule.ALL_SUCCESS;
         }
+
         Object raw = data.get("triggerRule");
         if (raw == null) {
             raw = data.get("trigger_rule");
         }
+
         if (raw == null) {
             return TaskTriggerRule.ALL_SUCCESS;
         }
+
         String name = String.valueOf(raw).trim().toUpperCase(Locale.ROOT).replace('-', '_');
         if (name.isEmpty()) {
             return TaskTriggerRule.ALL_SUCCESS;
         }
+
         try {
             return TaskTriggerRule.valueOf(name);
         } catch (IllegalArgumentException e) {
@@ -103,10 +135,12 @@ public abstract class AbstractNode implements TaskNode {
         if (data == null) {
             return defaultValue;
         }
+
         Object raw = data.get(key);
         if (raw == null) {
             return defaultValue;
         }
+
         try {
             int v = (raw instanceof Number n) ? n.intValue() : Integer.parseInt(String.valueOf(raw).trim());
             return Math.max(0, v);
@@ -119,10 +153,12 @@ public abstract class AbstractNode implements TaskNode {
         if (data == null) {
             return defaultValue;
         }
+
         Object raw = data.get(key);
         if (raw == null) {
             return defaultValue;
         }
+
         try {
             long v = (raw instanceof Number n) ? n.longValue() : Long.parseLong(String.valueOf(raw).trim());
             return Math.max(0L, v);
@@ -130,4 +166,23 @@ public abstract class AbstractNode implements TaskNode {
             return defaultValue;
         }
     }
+
+    private static double parseDouble(Map<String, Object> data, String key, double defaultValue) {
+        if (data == null) {
+            return defaultValue;
+        }
+
+        Object raw = data.get(key);
+        if (raw == null) {
+            return defaultValue;
+        }
+
+        try {
+            double v = (raw instanceof Number n) ? n.doubleValue() : Double.parseDouble(String.valueOf(raw).trim());
+            return Double.isFinite(v) ? v : defaultValue;
+        } catch (Exception e) {
+            return defaultValue;
+        }
+    }
+
 }

@@ -41,10 +41,33 @@ public interface TaskNode {
     }
 
     /**
-     * 节点失败重试之间的间隔
+     * 节点失败重试之间的间隔（首次重试的延迟，也是退避增长的基数）
      */
     default long getRetryDelayMillis() {
         return 1000;
+    }
+
+    /**
+     * 退避系数：第 n 次重试的延迟 = retryDelayMillis × coefficient^(n-1)。
+     * 默认 1.0（固定间隔，与历史行为一致）；典型指数退避取 2.0。
+     */
+    default double getRetryBackoffCoefficient() {
+        return 2.0;
+    }
+
+    /**
+     * 单次重试等待的上限（毫秒），防止退避无界增长拖长流程。默认 30s。
+     */
+    default long getRetryMaxIntervalMillis() {
+        return 30_000L;
+    }
+
+    /**
+     * 抖动比例 [0, 1)：在封顶后的延迟上再叠加 0~jitter×delay 的随机抖动，
+     * 打散多节点/多流程同 delay 同时唤醒的重试风暴。默认 0（不抖动）。
+     */
+    default double getRetryJitter() {
+        return 0.0;
     }
 
     /**

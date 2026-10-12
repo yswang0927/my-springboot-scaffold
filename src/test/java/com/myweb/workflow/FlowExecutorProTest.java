@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Timeout;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -30,6 +31,11 @@ class FlowExecutorProTest {
     void resetCounters() {
         TestSupport.CountNode.GLOBAL.set(0);
     }
+
+    /** 确定性随机源：nextDouble() 恒返回 0（用于验证抖动的下界；jitter=0 时不参与计算） */
+    private static final Random ZERO_RANDOM = new Random() {
+        @Override public double nextDouble() { return 0.0; }
+    };
 
     private ExecutionContext ctx(Object input) {
         ExecutionContext c = new ExecutionContext();
@@ -178,6 +184,70 @@ class FlowExecutorProTest {
             assertFalse(r.getSucceedNodes().contains("d"));
             assertTrue(r.getFailedNodes().containsKey("f"));
             assertTrue(r.getFailedNodes().containsKey("d"), "UPSTREAM_FAILED 节点也应纳入 failedNodes 报告");
+        }
+    }
+
+    @Test
+    void retryBackoff_delayComputation() {
+        // 纯函数验证：base=100, coeff=2.0, cap=1000, jitter=0
+        TestSupport.RetryPolicyStubNode stub = new TestSupport.RetryPolicyStubNode(100L, 2.0, 1000L, 0.0);
+        assertEquals(100L, FlowExecutorPro.computeRetryDelay(stub, 1, ZERO_RANDOM));
+        assertEquals(200L, FlowExecutorPro.computeRetryDelay(stub, 2, ZERO_RANDOM));
+        assertEquals(400L, FlowExecutorPro.computeRetryDelay(stub, 3, ZERO_RANDOM));
+        assertEquals(800L, FlowExecutorPro.computeRetryDelay(stub, 4, ZERO_RANDOM));
+        // 封顶：不再增长
+        assertEquals(1000L, FlowExecutorPro.computeRetryDelay(stub, 5, ZERO_RANDOM));
+        assertEquals(1000L, FlowExecutorPro.computeRetryDelay(stub, 50, ZERO_RANDOM));
+
+        // 默认策略（coeff=1.0, jitter=0）：固定间隔，与历史行为一致
+        TestSupport.RetryPolicyStubNode fixed = new TestSupport.RetryPolicyStubNode(50L, 1.0, 30_000L, 0.0);
+        assertEquals(50L, FlowExecutorPro.computeRetryDelay(fixed, 1, ZERO_RANDOM));
+        assertEquals(50L, FlowExecutorPro.computeRetryDelay(fixed, 7, ZERO_RANDOM));
+
+        // 抖动边界：jitter=0.2 时延迟 ∈ [base, base×1.2)，用极端源验证两端
+        assertEquals(100L, FlowExecutorPro.computeRetryDelay(
+                new TestSupport.RetryPolicyStubNode(100L, 1.0, 0L, 0.2), 1, ZERO_RANDOM));
+        // nextDouble 取 0.999999 → extra = (long)(0.999999×0.2×100) = 19
+        assertEquals(119L, FlowExecutorPro.computeRetryDelay(
+                new TestSupport.RetryPolicyStubNode(100L, 1.0, 0L, 0.2), 1, new Random() {
+                    @Override public double nextDouble() { return 0.999999; }
+                }));
+
+        // 大系数大次数不溢出：cap=Long.MAX_VALUE 级别仍能给出有限值
+        TestSupport.RetryPolicyStubNode huge = new TestSupport.RetryPolicyStubNode(1000L, 3.0, 0L, 0.0);
+        long d = FlowExecutorPro.computeRetryDelay(huge, 10, ZERO_RANDOM);
+        assertTrue(d > 0L && d < Long.MAX_VALUE);
+    }
+
+    @Test
+    @Timeout(value = 20, unit = TimeUnit.SECONDS)
+    void retryBackoff_endToEnd_delaysGrowAndReportReflectsTiming() throws Exception {
+        // base=60ms, coeff=3.0, 无抖动：两次重试至少等待 60+180=240ms
+        Graph g = TestSupport.graph(
+                List.of(
+                        TestSupport.node("s", "start"),
+                        TestSupport.node("f", TestSupport.TYPE_FAIL, TestSupport.data(
+                                "failTimes", 2,
+                                "maxRetries", 3,
+                                "retryDelayMillis", 60,
+                                "retryBackoffCoefficient", 3.0
+                        )),
+                        TestSupport.node("o", TestSupport.TYPE_PASS)
+                ),
+                List.of(
+                        TestSupport.edge("1", "s", "f"),
+                        TestSupport.edge("2", "f", "o")
+                )
+        );
+        try (FlowExecutorPro ex = new FlowExecutorPro(g, new TestSupport.CollectingListener())) {
+            ExecutionContext c = ctx("bk");
+            long t0 = System.currentTimeMillis();
+            ex.execute(c);
+            long elapsed = System.currentTimeMillis() - t0;
+            assertEquals(FlowExecutorPro.ExecutionState.COMPLETED, ex.getExecutionState());
+            assertTrue(c.getNodeExecutionResult("f").get().isSuccess());
+            // 固定间隔时代两轮只需 ~120ms；退避后几何和下限 240ms，留 40ms 调度余量
+            assertTrue(elapsed >= 200, "backoff should stretch retry waits, elapsed=" + elapsed);
         }
     }
 

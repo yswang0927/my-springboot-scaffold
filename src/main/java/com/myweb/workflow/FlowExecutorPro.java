@@ -6,6 +6,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.ThreadLocalRandom;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -600,7 +601,7 @@ public class FlowExecutorPro implements AutoCloseable {
                 LOG.warn(">> WARNING: Retry task <{}> attempt {}/{}", failedNodeId, attempt, maxRetries);
                 failedNode.setTaskState(TaskState.PENDING);
                 this.scheduledRetryTasksNum.incrementAndGet();
-                final long delay = Math.max(0L, failedNode.getRetryDelayMillis());
+                final long delay = computeRetryDelay(failedNode, attempt, ThreadLocalRandom.current());
                 this.retryExecutorService.schedule(() -> {
                     try {
                         if (this.executionState == ExecutionState.RUNNING) {
@@ -626,6 +627,41 @@ public class FlowExecutorPro implements AutoCloseable {
         context.addNodeExecutionResult(failedNodeId, failedResult);
         notifyNodeCompletion(failedResult);
         evaluateAndTriggerDownstream(failedNodeId, context, null);
+    }
+
+    /**
+     * 计算第 {@code attempt} 次重试的等待毫秒数（指数退避 + 封顶 + 抖动）：
+     * <pre>
+     *   delay = min( retryDelayMillis × coefficient^(attempt-1), maxInterval )
+     *   delay += random(0, jitter × delay)
+     * </pre>
+     * 默认 coefficient=1.0、jitter=0 时退化为固定间隔（与历史行为一致）。
+     * 累乘采用双精度并提前比较封顶，避免 coefficient^n 溢出；
+     * maxInterval ≤ 0 视为不设上限。README 调校准则：退避必须有上限。
+     * package-private 以便单测直接验证数值。
+     */
+    static long computeRetryDelay(TaskNode node, int attempt, Random rnd) {
+        final long base = Math.max(0L, node.getRetryDelayMillis());
+        final double coeff = Math.max(1.0, node.getRetryBackoffCoefficient());
+        final long cap = node.getRetryMaxIntervalMillis() <= 0L
+                ? Long.MAX_VALUE : Math.max(0L, node.getRetryMaxIntervalMillis());
+
+        double d = (double) base;
+        // 第 attempt 次重试 = base × coeff^(attempt-1)：attempt=1 时即 base，无增长
+        for (int i = 1; i < attempt && d < cap; i++) {
+            d *= coeff;
+        }
+        long capped = (long) Math.min(d, (double) cap);
+        return applyJitter(capped, node, rnd);
+    }
+
+    private static long applyJitter(long delay, TaskNode node, Random rnd) {
+        final double jitter = node.getRetryJitter();
+        if (delay <= 0L || jitter <= 0.0) {
+            return Math.max(0L, delay);
+        }
+        final long extra = (long) (rnd.nextDouble() * jitter * delay);
+        return delay + extra;
     }
 
     private void handleTaskSkip(String nodeId, FlowSkipException ex, ExecutionContext context) {

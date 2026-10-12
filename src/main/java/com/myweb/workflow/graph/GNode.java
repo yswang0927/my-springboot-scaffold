@@ -18,10 +18,12 @@ public class GNode implements Cloneable {
      * 节点ID
      */
     private String id;
+
     /**
      * 节点类型
      */
     private String type;
+
     /**
      * 节点数据
      */

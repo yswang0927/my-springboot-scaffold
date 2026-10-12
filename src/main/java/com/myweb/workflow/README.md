@@ -72,7 +72,10 @@ public void onFlowTimedOut(long timeoutMillis, String message) {
 |------|------|------|
 | `triggerRule` | 触发规则，见 `TaskTriggerRule` | `ALL_SUCCESS` |
 | `maxRetries` | 失败最大重试次数 | `3` |
-| `retryDelayMillis` | 重试间隔毫秒 | `1000` |
+| `retryDelayMillis` | 首次重试间隔毫秒，也是退避增长的基数 | `1000` |
+| `retryBackoffCoefficient` | 退避系数（≥1.0），第 n 次重试延迟 = 基数 × 系数^(n-1)；1.0 为固定间隔 | `1.0` |
+| `retryMaxIntervalMillis` | 单次重试等待上限（退避封顶）；≤0 表示不设上限 | `30000` |
+| `retryJitter` | 抖动比例 [0,1)，在封顶后的延迟上叠加 0~jitter×delay 随机量，打散同时唤醒的重试风暴 | `0` |
 
 示例：
 
@@ -83,11 +86,22 @@ public void onFlowTimedOut(long timeoutMillis, String message) {
   "data": {
     "url": "https://api.example.com/x",
     "triggerRule": "ONE_SUCCESS",
-    "maxRetries": 2,
-    "retryDelayMillis": 500
+    "maxRetries": 3,
+    "retryDelayMillis": 500,
+    "retryBackoffCoefficient": 2.0,
+    "retryMaxIntervalMillis": 8000,
+    "retryJitter": 0.2
   }
 }
 ```
+
+上例的重试序列：500ms → 1000ms → 2000ms（各自再叠加 0~20% 随机抖动）。
+
+调校准则（与根目录 README 的 Retry Policy 设计思维一致）：
+
+- 退避必须有上限：`retryMaxIntervalMillis` ≤ 单节点预期超时；
+- 重试等待总和需 ≤ 整图 `flowTimeoutMillis`，否则会先被看门狗打断；
+- 多节点/多流程共用同一下游时建议配 `retryJitter`（如 0.2）避免同刻集中重试。
 
 ## 暂停与恢复
 
