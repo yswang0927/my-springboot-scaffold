@@ -21,6 +21,7 @@ public class Graph {
     private final ConcurrentMap<String, Integer> nodeInDegree = new ConcurrentHashMap<>();
     // 目标节点 -> 指向它的输入端口信息，这个关系可以用于执行此节点前收集其依赖的所有输入
     private final ConcurrentMap<String, Set<GNodeInput>> targetNodeInputsMap = new ConcurrentHashMap<>();
+    // 最大并行度
     private volatile int maxParallelism = 1;
 
     private volatile boolean initialized = false;
@@ -45,16 +46,18 @@ public class Graph {
         return nodes;
     }
 
-    public synchronized void setNodes(Collection<GNode> nodes) {
-        if (this.initialized) {
-            throw new UnsupportedOperationException("Graph is already initialized. Cannot modify nodes.");
-        }
+    public void setNodes(Collection<GNode> nodes) {
+        synchronized (initLock) {
+            if (this.initialized) {
+                throw new UnsupportedOperationException("Graph is already initialized. Cannot modify nodes.");
+            }
 
-        this.nodes.clear();
-        if (nodes != null) {
-            for (GNode node : nodes) {
-                if (node != null && node.isValidNode()) {
-                    this.nodes.add(node);
+            this.nodes.clear();
+            if (nodes != null) {
+                for (GNode node : nodes) {
+                    if (node != null && node.isValidNode()) {
+                        this.nodes.add(node);
+                    }
                 }
             }
         }
@@ -64,17 +67,22 @@ public class Graph {
         return edges;
     }
 
-    public synchronized void setEdges(Collection<GEdge> edges) {
-        if (this.initialized) {
-            throw new UnsupportedOperationException("Graph is already initialized. Cannot modify nodes.");
-        }
+    public void setEdges(Collection<GEdge> edges) {
+        synchronized (initLock) {
+            if (this.initialized) {
+                throw new UnsupportedOperationException("Graph is already initialized. Cannot modify edges.");
+            }
 
-        this.edges.clear();
-        if (edges != null) {
-            for (GEdge edge : edges) {
-                if (edge != null && edge.isValidEdge()) {
-                    this.edges.add(edge);
+            this.edges.clear();
+            if (edges != null) {
+                // 使用 LinkedHashSet 去重，保持插入顺序
+                Set<GEdge> uniqueEdges = new LinkedHashSet<>();
+                for (GEdge edge : edges) {
+                    if (edge != null && edge.isValidEdge()) {
+                        uniqueEdges.add(edge);
+                    }
                 }
+                this.edges.addAll(uniqueEdges);
             }
         }
     }
@@ -122,6 +130,7 @@ public class Graph {
                         // 入度（InDegree）在拓扑排序中代表的是“有多少个前置节点尚未完成。
                         // 如果 A -> B 有多条边（比如连接不同的端口），入度也只能增加一次，入度采用和节点绑定，不和边绑定；
                         // 这样当 A 执行完毕，B 的入度减1，当入度变为0时，B 就会加入到可执行队列中。
+                        // edges 已在 setEdges() 中通过 LinkedHashSet 去重，此处使用 Set.add() 返回值是防御性编程。
                         if (isNewDependency) {
                             int newInDegree = this.nodeInDegree.get(to) + 1;
                             this.nodeInDegree.put(to, newInDegree);
@@ -360,7 +369,7 @@ public class Graph {
      * @return false 表示无环；true 表示有环
      * @deprecated 被 {@link #analyzeGraph()} 替代
      */
-    private boolean detectCycle() {
+    public boolean detectCycle() {
         // 拷贝入度，用于模拟拓扑排序
         Map<String, Integer> tempInDegree = new HashMap<>(this.nodeInDegree);
         Queue<String> queue = new LinkedList<>();
@@ -397,7 +406,7 @@ public class Graph {
      * @return 最大并行度
      * @deprecated 被 {@link #analyzeGraph()} 替代
      */
-    private int calcMaxParallelism() {
+    public int calcMaxParallelism() {
         Map<String, Integer> tempInDegree = new HashMap<>(this.nodeInDegree);
         Queue<String> tempQueue = new LinkedList<>();
         // 所有入度为0的入队
