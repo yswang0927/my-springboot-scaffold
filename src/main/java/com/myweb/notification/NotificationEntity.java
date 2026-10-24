@@ -4,15 +4,26 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "notifications")
+@Table(name = "notifications", indexes = {
+        @Index(name = "idx_user_id", columnList = "userId"),
+        @Index(name = "idx_created_at", columnList = "createdAt"),
+        @Index(name = "idx_status", columnList = "status")
+})
 public class NotificationEntity {
     @Id
     private String id;
     private String userId;
     private String channel;
     private String type;
-    private String status; //  (PENDING, SENT, FAILED, BLOCKED)
+    private String status;
+    private String templateId;
+    private String idempotencyKey;
+    private int retryCount;
+    @Column(length = 1000)
+    private String errorMessage;
     private LocalDateTime createdAt = LocalDateTime.now();
+    private LocalDateTime sentAt;
+    private LocalDateTime updatedAt;
 
     public String getId() {
         return id;
@@ -54,11 +65,59 @@ public class NotificationEntity {
         this.status = status;
     }
 
+    public String getTemplateId() {
+        return templateId;
+    }
+
+    public void setTemplateId(String templateId) {
+        this.templateId = templateId;
+    }
+
+    public String getIdempotencyKey() {
+        return idempotencyKey;
+    }
+
+    public void setIdempotencyKey(String idempotencyKey) {
+        this.idempotencyKey = idempotencyKey;
+    }
+
+    public int getRetryCount() {
+        return retryCount;
+    }
+
+    public void setRetryCount(int retryCount) {
+        this.retryCount = retryCount;
+    }
+
+    public String getErrorMessage() {
+        return errorMessage;
+    }
+
+    public void setErrorMessage(String errorMessage) {
+        this.errorMessage = errorMessage;
+    }
+
     public LocalDateTime getCreatedAt() {
         return createdAt;
     }
 
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public LocalDateTime getSentAt() {
+        return sentAt;
+    }
+
+    public void setSentAt(LocalDateTime sentAt) {
+        this.sentAt = sentAt;
+    }
+
+    public LocalDateTime getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void setUpdatedAt(LocalDateTime updatedAt) {
+        this.updatedAt = updatedAt;
     }
 }

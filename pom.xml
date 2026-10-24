@@ -109,6 +109,30 @@
 			<artifactId>spring-kafka</artifactId>
 		</dependency>
 
+		<!-- 监控指标：Counter/Timer/MeterRegistry -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
+
+		<!-- 生产环境指标暴露给 Prometheus -->
+		<dependency>
+			<groupId>io.micrometer</groupId>
+			<artifactId>micrometer-registry-prometheus</artifactId>
+		</dependency>
+
+		<!-- 应用内通知（WebSocket / STOMP） -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-websocket</artifactId>
+		</dependency>
+
+		<!-- 邮件通知（JavaMailSender） -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-mail</artifactId>
+		</dependency>
+
 		<!-- 用于日期格式的自动检测解析 -->
 		<dependency>
 			<groupId>com.github.sisyphsu</groupId>
