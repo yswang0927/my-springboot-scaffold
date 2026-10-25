@@ -7,5 +7,6 @@ package com.myweb.notification;
 public interface NotificationProvider {
     // 返回通道名称：PUSH, EMAIL, SMS, IN_APP
     String getChannel();
+
     void send(Notification notification) throws Exception;
 }

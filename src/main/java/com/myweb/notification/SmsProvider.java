@@ -3,8 +3,8 @@ package com.myweb.notification;
 import org.springframework.stereotype.Component;
 
 @Component
-public class TwilioSmsProvider implements NotificationProvider {
-    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(TwilioSmsProvider.class);
+public class SmsProvider implements NotificationProvider {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(SmsProvider.class);
 
     @Override
     public String getChannel() {
